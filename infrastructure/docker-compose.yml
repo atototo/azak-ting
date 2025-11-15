@@ -27,10 +27,23 @@ services:
     container_name: craveny-redis
     volumes:
       - redis_data:/data
-      - ./redis-init/dump.rdb:/data/dump.rdb
+      # 호스트 파일 직접 마운트 제거 (Resource busy 에러 근본 원인 해결)
+      # - ./redis-init/dump.rdb:/data/dump.rdb
     ports:
       - "6380:6379"
     restart: unless-stopped
+    # RDB 스냅샷 완전 비활성화 (디스크 저장 문제 근본 해결)
+    # --save "": RDB 스냅샷 저장 비활성화
+    # --dbfilename "": RDB 파일명을 빈 값으로 설정하여 파일 생성 방지
+    # --stop-writes-on-bgsave-error no: 디스크 저장 실패 시에도 쓰기 허용
+    command: >
+      sh -c "
+      rm -f /data/dump.rdb 2>/dev/null || true &&
+      redis-server
+      --save ''
+      --dbfilename ''
+      --stop-writes-on-bgsave-error no
+      "
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s

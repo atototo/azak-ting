@@ -40,7 +40,14 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Returns:
         bool: 일치 여부
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        # bcrypt는 72바이트 제한이 있으므로 초과 시 False 반환
+        if len(plain_password.encode('utf-8')) > 72:
+            return False
+        return pwd_context.verify(plain_password, hashed_password)
+    except (ValueError, AttributeError) as e:
+        # bcrypt 호환성 문제나 기타 에러 처리
+        return False
 
 
 def create_session_token(user_id: int, email: str, role: str) -> str:
