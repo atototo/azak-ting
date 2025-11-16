@@ -18,8 +18,6 @@ from backend.utils.embedding_deduplicator import get_embedding_deduplicator
 from backend.utils.encoding_normalizer import get_encoding_normalizer
 from backend.llm.predictor import StockPredictor
 from backend.llm.vector_search import get_vector_search
-from backend.services.stock_analysis_service import update_stock_analysis_summary
-import asyncio
 
 
 logger = logging.getLogger(__name__)
@@ -249,14 +247,10 @@ class NewsSaver:
                     f"생성된 예측 수={len(all_predictions)}개"
                 )
 
-                # 새 예측 저장 후 종합 분석 리포트 업데이트
-                try:
-                    logger.info(f"종목 {stock_code}의 종합 분석 리포트 업데이트 시작")
-                    asyncio.run(update_stock_analysis_summary(stock_code, self.db, force_update=False))
-                    logger.info(f"종목 {stock_code}의 종합 분석 리포트 업데이트 완료")
-                except Exception as report_error:
-                    logger.error(f"종합 분석 리포트 업데이트 실패: {report_error}", exc_info=True)
-                    # 리포트 업데이트 실패해도 예측 저장은 유지
+                # 리포트 생성은 스케줄러/수동 업데이트에서 처리 (뉴스 저장 시 생성하지 않음)
+                logger.info(
+                    f"ℹ️ 종목 {stock_code} 예측 저장 완료 - 리포트는 스케줄러/수동 업데이트에서 생성됩니다."
+                )
 
             else:
                 logger.warning(f"예측 결과 없음: 뉴스 ID={news_article.id}")

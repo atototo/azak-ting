@@ -4,7 +4,9 @@ Stock Analysis Service
 예측 생성 시 자동으로 종합 투자 리포트를 업데이트하는 서비스
 """
 import logging
-from typing import Optional, Dict, Any
+import json
+import re
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -12,6 +14,8 @@ from sqlalchemy import func
 from backend.db.models.prediction import Prediction
 from backend.db.models.stock_analysis import StockAnalysisSummary
 from backend.db.models.stock import StockPrice
+from backend.db.models.model import Model
+from backend.db.models.ab_test_config import ABTestConfig
 from backend.llm.investment_report import get_report_generator
 from backend.utils.stock_mapping import get_stock_mapper
 from backend.utils.market_time import (
@@ -165,6 +169,7 @@ async def update_stock_analysis_summary(
         existing_summary = (
             db.query(StockAnalysisSummary)
             .filter(StockAnalysisSummary.stock_code == stock_code)
+            .order_by(StockAnalysisSummary.last_updated.desc())
             .first()
         )
 
@@ -179,155 +184,72 @@ async def update_stock_analysis_summary(
 
         logger.info(f"종목 {stock_code} 업데이트 시작: {reason}")
 
-        # 5. LLM 리포트 생성
-        logger.info(f"종목 {stock_code}에 대한 투자 리포트 생성 시작...")
-        generator = get_report_generator()
+        # 5. LLM 리포트 생성 (모든 활성 모델 대상)
+        active_models: List[Model] = (
+            db.query(Model).filter(Model.is_active == True).all()
+        )
 
-        # A/B 테스트 활성화 시 dual_generate_report 사용
-        from backend.config import settings
-        if settings.AB_TEST_ENABLED:
-            report = generator.dual_generate_report(stock_code, predictions, current_price)
-        else:
-            report = generator.generate_report(stock_code, predictions, current_price)
-
-        if not report or (not settings.AB_TEST_ENABLED and not report.get("overall_summary")):
-            logger.error(f"종목 {stock_code}의 리포트 생성 실패")
+        if not active_models:
+            logger.error("활성화된 LLM 모델이 없습니다. 리포트 생성을 중단합니다.")
             return None
 
-        # 6. 통계 계산
+        generator = get_report_generator()
+        report_data = generator._prepare_report_data(
+            stock_code, predictions, current_price
+        )
+        prompt = generator._build_prompt(report_data)
+
         total_predictions = len(predictions)
         up_count = sum(1 for p in predictions if p.direction == "up")
         down_count = sum(1 for p in predictions if p.direction == "down")
         hold_count = sum(1 for p in predictions if p.direction == "hold")
-
         confidences = [p.confidence for p in predictions if p.confidence]
         avg_confidence = sum(confidences) / len(confidences) if confidences else None
 
-        # 7. A/B 테스트 활성화 시 전체 report를 JSON으로 저장
-        if settings.AB_TEST_ENABLED:
-            # A/B 리포트에서 가격 정보 추출 (Model A 기준)
-            price_targets = {}
-            if report and "model_a" in report:
-                price_targets = report["model_a"].get("price_targets", {})
+        created_summaries: List[StockAnalysisSummary] = []
 
-            # A/B 리포트 전체를 JSON 필드에 저장 (analysis_summary_a, analysis_summary_b)
-            if existing_summary:
-                # custom_data 필드에 A/B 리포트 저장
-                existing_summary.custom_data = report
-                existing_summary.overall_summary = "A/B 테스트 활성화 (Model A/B 비교 리포트)"
+        for model in active_models:
+            logger.info(
+                f"모델 {model.name} ({model.provider}/{model.model_identifier}) 리포트 생성 시작"
+            )
+            report_payload = _generate_report_for_model(
+                generator=generator,
+                model=model,
+                prompt=prompt,
+            )
 
-                # 구조화된 가격 데이터 저장
-                if price_targets:
-                    existing_summary.base_price = price_targets.get("base_price")
-                    existing_summary.short_term_target_price = price_targets.get("short_term_target")
-                    existing_summary.short_term_support_price = price_targets.get("short_term_support")
-                    existing_summary.medium_term_target_price = price_targets.get("medium_term_target")
-                    existing_summary.medium_term_support_price = price_targets.get("medium_term_support")
-                    existing_summary.long_term_target_price = price_targets.get("long_term_target")
-
-                existing_summary.total_predictions = total_predictions
-                existing_summary.up_count = up_count
-                existing_summary.down_count = down_count
-                existing_summary.hold_count = hold_count
-                existing_summary.avg_confidence = avg_confidence
-                existing_summary.last_updated = datetime.now()
-                existing_summary.based_on_prediction_count = total_predictions
-                summary = existing_summary
-                logger.info(f"종목 {stock_code}의 A/B 분석 요약 업데이트 완료")
-            else:
-                summary = StockAnalysisSummary(
-                    stock_code=stock_code,
-                    overall_summary="A/B 테스트 활성화 (Model A/B 비교 리포트)",
-                    custom_data=report,
-
-                    # 구조화된 가격 데이터
-                    base_price=price_targets.get("base_price") if price_targets else None,
-                    short_term_target_price=price_targets.get("short_term_target") if price_targets else None,
-                    short_term_support_price=price_targets.get("short_term_support") if price_targets else None,
-                    medium_term_target_price=price_targets.get("medium_term_target") if price_targets else None,
-                    medium_term_support_price=price_targets.get("medium_term_support") if price_targets else None,
-                    long_term_target_price=price_targets.get("long_term_target") if price_targets else None,
-
-                    total_predictions=total_predictions,
-                    up_count=up_count,
-                    down_count=down_count,
-                    hold_count=hold_count,
-                    avg_confidence=avg_confidence,
-                    last_updated=datetime.now(),
-                    based_on_prediction_count=total_predictions
+            if not report_payload:
+                logger.warning(
+                    f"⚠️ 모델 {model.name} 리포트 생성 실패: {stock_code}"
                 )
-                db.add(summary)
-                logger.info(f"종목 {stock_code}의 A/B 분석 요약 생성 완료")
-        else:
-            # 단일 모델 리포트 저장
-            if existing_summary:
-                # 업데이트
-                existing_summary.overall_summary = report.get("overall_summary")
-                existing_summary.short_term_scenario = report.get("short_term_scenario")
-                existing_summary.medium_term_scenario = report.get("medium_term_scenario")
-                existing_summary.long_term_scenario = report.get("long_term_scenario")
-                existing_summary.risk_factors = report.get("risk_factors", [])
-                existing_summary.opportunity_factors = report.get("opportunity_factors", [])
-                existing_summary.recommendation = report.get("recommendation")
+                continue
 
-                # 구조화된 가격 데이터 저장
-                price_targets = report.get("price_targets", {})
-                if price_targets:
-                    existing_summary.base_price = price_targets.get("base_price")
-                    existing_summary.short_term_target_price = price_targets.get("short_term_target")
-                    existing_summary.short_term_support_price = price_targets.get("short_term_support")
-                    existing_summary.medium_term_target_price = price_targets.get("medium_term_target")
-                    existing_summary.medium_term_support_price = price_targets.get("medium_term_support")
-                    existing_summary.long_term_target_price = price_targets.get("long_term_target")
+            summary = _build_summary_from_payload(
+                stock_code=stock_code,
+                model=model,
+                report_payload=report_payload,
+                total_predictions=total_predictions,
+                up_count=up_count,
+                down_count=down_count,
+                hold_count=hold_count,
+                avg_confidence=avg_confidence,
+            )
+            db.add(summary)
+            created_summaries.append(summary)
+            logger.info(
+                f"  ✅ 모델 {model.name} 리포트 생성 완료 (stock={stock_code})"
+            )
 
-                existing_summary.total_predictions = total_predictions
-                existing_summary.up_count = up_count
-                existing_summary.down_count = down_count
-                existing_summary.hold_count = hold_count
-                existing_summary.avg_confidence = avg_confidence
-
-                existing_summary.last_updated = datetime.now()
-                existing_summary.based_on_prediction_count = total_predictions
-
-                summary = existing_summary
-                logger.info(f"종목 {stock_code}의 분석 요약 업데이트 완료")
-            else:
-                # 신규 생성
-                price_targets = report.get("price_targets", {})
-                summary = StockAnalysisSummary(
-                    stock_code=stock_code,
-                    overall_summary=report.get("overall_summary"),
-                    short_term_scenario=report.get("short_term_scenario"),
-                    medium_term_scenario=report.get("medium_term_scenario"),
-                    long_term_scenario=report.get("long_term_scenario"),
-                    risk_factors=report.get("risk_factors", []),
-                    opportunity_factors=report.get("opportunity_factors", []),
-                    recommendation=report.get("recommendation"),
-
-                    # 구조화된 가격 데이터
-                    base_price=price_targets.get("base_price") if price_targets else None,
-                    short_term_target_price=price_targets.get("short_term_target") if price_targets else None,
-                    short_term_support_price=price_targets.get("short_term_support") if price_targets else None,
-                    medium_term_target_price=price_targets.get("medium_term_target") if price_targets else None,
-                    medium_term_support_price=price_targets.get("medium_term_support") if price_targets else None,
-                    long_term_target_price=price_targets.get("long_term_target") if price_targets else None,
-
-                    total_predictions=total_predictions,
-                    up_count=up_count,
-                    down_count=down_count,
-                    hold_count=hold_count,
-                    avg_confidence=avg_confidence,
-
-                    last_updated=datetime.now(),
-                    based_on_prediction_count=total_predictions,
-                )
-                db.add(summary)
-                logger.info(f"종목 {stock_code}의 분석 요약 신규 생성 완료")
+        if not created_summaries:
+            logger.error(f"모든 모델 리포트 생성에 실패했습니다: {stock_code}")
+            db.rollback()
+            return None
 
         db.commit()
-        db.refresh(summary)
+        for summary in created_summaries:
+            db.refresh(summary)
 
-        return summary
+        return created_summaries[0]
 
     except Exception as e:
         logger.error(f"종목 {stock_code}의 분석 요약 업데이트 실패: {e}", exc_info=True)
@@ -350,50 +272,297 @@ def get_stock_analysis_summary(
         분석 요약 딕셔너리 또는 None
     """
     try:
-        summary = (
-            db.query(StockAnalysisSummary)
-            .filter(StockAnalysisSummary.stock_code == stock_code)
-            .first()
-        )
+        from backend.config import settings
+
+        model_map = {
+            model.id: model for model in db.query(Model).all()
+        }
+
+        ab_config: Optional[ABTestConfig] = None
+        if settings.AB_TEST_ENABLED:
+            ab_config = (
+                db.query(ABTestConfig)
+                .filter(ABTestConfig.is_active == True)
+                .first()
+            )
+
+        if ab_config:
+            report_a = _fetch_latest_summary(
+                db, stock_code, model_id=ab_config.model_a_id
+            )
+            report_b = _fetch_latest_summary(
+                db, stock_code, model_id=ab_config.model_b_id
+            )
+
+            if report_a and report_b:
+                formatted_a = _format_summary_output(report_a, model_map)
+                formatted_b = _format_summary_output(report_b, model_map)
+                comparison = _build_comparison(formatted_a, formatted_b)
+                meta_last_updated = max(
+                    report_a.last_updated or datetime.min,
+                    report_b.last_updated or datetime.min,
+                )
+                meta_prediction_count = max(
+                    report_a.based_on_prediction_count or 0,
+                    report_b.based_on_prediction_count or 0,
+                )
+
+                return {
+                    "ab_test_enabled": True,
+                    "model_a": formatted_a,
+                    "model_b": formatted_b,
+                    "comparison": comparison,
+                    "meta": {
+                        "last_updated": meta_last_updated.isoformat()
+                        if meta_last_updated
+                        else None,
+                        "based_on_prediction_count": meta_prediction_count,
+                    },
+                }
+
+        # 레거시 custom_data 기반 A/B 리포트 (model_id 없이 저장된 경우) 지원
+        legacy_ab = _fetch_legacy_ab_summary(db, stock_code)
+        if legacy_ab:
+            return legacy_ab
+
+        # A/B 비활성화 또는 모델 리포트 미존재 시 최신 리포트 1건 반환
+        summary = _fetch_latest_summary(db, stock_code)
 
         if not summary:
             return None
 
-        # A/B 테스트 활성화 시 custom_data에서 A/B 리포트 반환
-        from backend.config import settings
-        if settings.AB_TEST_ENABLED and summary.custom_data:
-            # custom_data에 A/B 리포트가 저장되어 있음 + meta 정보 추가
-            result = dict(summary.custom_data)  # Copy to avoid modifying the original
-            result["meta"] = {
-                "last_updated": summary.last_updated.isoformat() if summary.last_updated else None,
-                "based_on_prediction_count": summary.based_on_prediction_count,
-            }
-            return result
-        else:
-            # 단일 모델 리포트 반환
-            return {
-                "overall_summary": summary.overall_summary,
-                "short_term_scenario": summary.short_term_scenario,
-                "medium_term_scenario": summary.medium_term_scenario,
-                "long_term_scenario": summary.long_term_scenario,
-                "risk_factors": summary.risk_factors or [],
-                "opportunity_factors": summary.opportunity_factors or [],
-                "recommendation": summary.recommendation,
-
-                "statistics": {
-                    "total_predictions": summary.total_predictions,
-                    "up_count": summary.up_count,
-                    "down_count": summary.down_count,
-                    "hold_count": summary.hold_count,
-                    "avg_confidence": round(summary.avg_confidence * 100, 1) if summary.avg_confidence else None,
-                },
-
-                "meta": {
-                    "last_updated": summary.last_updated.isoformat() if summary.last_updated else None,
-                    "based_on_prediction_count": summary.based_on_prediction_count,
-                }
-            }
+        return _format_summary_output(summary, model_map)
 
     except Exception as e:
         logger.error(f"종목 {stock_code}의 분석 요약 조회 실패: {e}", exc_info=True)
         return None
+
+
+def _generate_report_for_model(
+    generator,
+    model: Model,
+    prompt: str,
+) -> Optional[Dict[str, Any]]:
+    """주어진 모델로 LLM 리포트를 생성."""
+    try:
+        client = generator._create_client(model.provider)
+        messages = [
+            {
+                "role": "system",
+                "content": "당신은 한국 주식 시장의 베테랑 애널리스트입니다. 데이터 기반으로 명확하고 실용적인 투자 리포트를 작성합니다.",
+            },
+            {"role": "user", "content": prompt},
+        ]
+
+        kwargs = {
+            "model": model.model_identifier,
+            "messages": messages,
+            "temperature": 0.4,
+            "max_tokens": 1000,
+        }
+
+        if model.provider != "openrouter":
+            kwargs["response_format"] = {"type": "json_object"}
+
+        response = client.chat.completions.create(**kwargs)
+        result_text = response.choices[0].message.content
+
+        if model.provider == "openrouter":
+            result_text = _extract_openrouter_json(result_text)
+
+        return json.loads(result_text)
+    except Exception as e:
+        logger.error(
+            f"모델 {model.name} ({model.provider}) 리포트 생성 실패: {e}",
+            exc_info=True,
+        )
+        return None
+
+
+def _build_summary_from_payload(
+    stock_code: str,
+    model: Model,
+    report_payload: Dict[str, Any],
+    total_predictions: int,
+    up_count: int,
+    down_count: int,
+    hold_count: int,
+    avg_confidence: Optional[float],
+) -> StockAnalysisSummary:
+    """LLM 응답을 StockAnalysisSummary 엔티티로 변환."""
+    price_targets = report_payload.get("price_targets") or {}
+    now = datetime.now()
+
+    return StockAnalysisSummary(
+        stock_code=stock_code,
+        model_id=model.id,
+        overall_summary=report_payload.get("overall_summary"),
+        short_term_scenario=report_payload.get("short_term_scenario"),
+        medium_term_scenario=report_payload.get("medium_term_scenario"),
+        long_term_scenario=report_payload.get("long_term_scenario"),
+        risk_factors=report_payload.get("risk_factors", []),
+        opportunity_factors=report_payload.get("opportunity_factors", []),
+        recommendation=report_payload.get("recommendation"),
+        custom_data={
+            "model_id": model.id,
+            "model_name": model.name,
+            "raw_report": report_payload,
+        },
+        total_predictions=total_predictions,
+        up_count=up_count,
+        down_count=down_count,
+        hold_count=hold_count,
+        avg_confidence=avg_confidence,
+        base_price=price_targets.get("base_price"),
+        short_term_target_price=price_targets.get("short_term_target"),
+        short_term_support_price=price_targets.get("short_term_support"),
+        medium_term_target_price=price_targets.get("medium_term_target"),
+        medium_term_support_price=price_targets.get("medium_term_support"),
+        long_term_target_price=price_targets.get("long_term_target"),
+        last_updated=now,
+        based_on_prediction_count=total_predictions,
+    )
+
+
+def _extract_openrouter_json(text: str) -> str:
+    """OpenRouter 응답에서 JSON 부분만 추출."""
+    json_match = re.search(r"```json\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if json_match:
+        return json_match.group(1)
+
+    json_match = re.search(r"```\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if json_match:
+        return json_match.group(1)
+
+    json_match = re.search(r"(\{[^{]*\"overall_summary\".*\})\s*$", text, re.DOTALL)
+    if json_match:
+        return json_match.group(1)
+
+    return text
+
+
+def _fetch_latest_summary(
+    db: Session,
+    stock_code: str,
+    model_id: Optional[int] = None,
+) -> Optional[StockAnalysisSummary]:
+    """특정 종목(+모델)의 최신 리포트 조회."""
+    query = db.query(StockAnalysisSummary).filter(
+        StockAnalysisSummary.stock_code == stock_code
+    )
+    if model_id is not None:
+        query = query.filter(StockAnalysisSummary.model_id == model_id)
+
+    return query.order_by(StockAnalysisSummary.last_updated.desc()).first()
+
+
+def _fetch_legacy_ab_summary(
+    db: Session,
+    stock_code: str,
+) -> Optional[Dict[str, Any]]:
+    """레거시 custom_data(단일 row)에 저장된 A/B 리포트를 반환."""
+    summary = (
+        db.query(StockAnalysisSummary)
+        .filter(
+            StockAnalysisSummary.stock_code == stock_code,
+            StockAnalysisSummary.custom_data.isnot(None),
+        )
+        .order_by(StockAnalysisSummary.last_updated.desc())
+        .first()
+    )
+
+    if not summary:
+        return None
+
+    try:
+        custom_data = summary.custom_data or {}
+        if not isinstance(custom_data, dict):
+            return None
+
+        if not custom_data.get("ab_test_enabled"):
+            return None
+
+        meta = custom_data.get("meta") or {}
+        if not meta.get("last_updated"):
+            meta["last_updated"] = (
+                summary.last_updated.isoformat() if summary.last_updated else None
+            )
+        if not meta.get("based_on_prediction_count"):
+            meta["based_on_prediction_count"] = summary.based_on_prediction_count
+        custom_data["meta"] = meta
+
+        return custom_data
+    except Exception:
+        return None
+
+
+def _format_summary_output(
+    summary: StockAnalysisSummary,
+    model_map: Dict[int, Model],
+) -> Dict[str, Any]:
+    """StockAnalysisSummary 엔티티를 API 응답 형태로 변환."""
+    model_info = model_map.get(summary.model_id) if summary.model_id else None
+    statistics = {
+        "total_predictions": summary.total_predictions,
+        "up_count": summary.up_count,
+        "down_count": summary.down_count,
+        "hold_count": summary.hold_count,
+        "avg_confidence": round(summary.avg_confidence * 100, 1)
+        if summary.avg_confidence
+        else None,
+    }
+    price_targets = {
+        "base_price": summary.base_price,
+        "short_term_target": summary.short_term_target_price,
+        "short_term_support": summary.short_term_support_price,
+        "medium_term_target": summary.medium_term_target_price,
+        "medium_term_support": summary.medium_term_support_price,
+        "long_term_target": summary.long_term_target_price,
+    }
+
+    return {
+        "model_id": summary.model_id,
+        "model_name": model_info.name if model_info else None,
+        "overall_summary": summary.overall_summary,
+        "short_term_scenario": summary.short_term_scenario,
+        "medium_term_scenario": summary.medium_term_scenario,
+        "long_term_scenario": summary.long_term_scenario,
+        "risk_factors": summary.risk_factors or [],
+        "opportunity_factors": summary.opportunity_factors or [],
+        "recommendation": summary.recommendation,
+        "price_targets": price_targets,
+        "statistics": statistics,
+        "meta": {
+            "last_updated": summary.last_updated.isoformat()
+            if summary.last_updated
+            else None,
+            "based_on_prediction_count": summary.based_on_prediction_count,
+        },
+    }
+
+
+def _build_comparison(
+    report_a: Dict[str, Any],
+    report_b: Dict[str, Any],
+) -> Dict[str, Any]:
+    """두 리포트를 비교하여 공통점 도출."""
+    rec_a = (report_a.get("recommendation") or "").lower()
+    rec_b = (report_b.get("recommendation") or "").lower()
+
+    recommendation_match = False
+    if ("매수" in rec_a and "매수" in rec_b) or \
+       ("매도" in rec_a and "매도" in rec_b) or \
+       ("관망" in rec_a and "관망" in rec_b) or \
+       ("보유" in rec_a and "보유" in rec_b):
+        recommendation_match = True
+
+    risks_a = set(report_a.get("risk_factors") or [])
+    risks_b = set(report_b.get("risk_factors") or [])
+    opps_a = set(report_a.get("opportunity_factors") or [])
+    opps_b = set(report_b.get("opportunity_factors") or [])
+
+    return {
+        "recommendation_match": recommendation_match,
+        "risk_overlap": list(risks_a & risks_b),
+        "opportunity_overlap": list(opps_a & opps_b),
+    }

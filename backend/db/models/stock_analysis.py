@@ -39,6 +39,7 @@ class StockAnalysisSummary(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     stock_code = Column(String(10), nullable=False, index=True)  # Removed unique=True to allow multiple date records
+    model_id = Column(Integer, nullable=True, index=True)  # 리포트를 생성한 모델 ID
 
     # LLM 생성 콘텐츠
     overall_summary = Column(Text, nullable=True)
@@ -74,6 +75,7 @@ class StockAnalysisSummary(Base):
     def __repr__(self) -> str:
         return (
             f"<StockAnalysisSummary(stock_code='{self.stock_code}', "
+            f"model_id='{self.model_id}', "
             f"total_predictions={self.total_predictions}, "
             f"last_updated='{self.last_updated}')>"
         )

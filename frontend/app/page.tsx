@@ -89,8 +89,10 @@ export default function Home() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Hero Section */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">📊 Craveny</h1>
-          <p className="text-gray-600">AI 기반 주식 뉴스 분석 및 예측 시스템</p>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
+            📈 시장 현황 대시보드
+          </h1>
+          <p className="text-gray-600">실시간 주식 시장 동향을 한눈에 확인하세요</p>
         </div>
 
         {/* 급등/급락 종목 */}
