@@ -207,49 +207,107 @@ async def update_stock_analysis_summary(
         avg_confidence = sum(confidences) / len(confidences) if confidences else None
 
         created_summaries: List[StockAnalysisSummary] = []
+        failed_models = []
 
         for model in active_models:
-            logger.info(
-                f"모델 {model.name} ({model.provider}/{model.model_identifier}) 리포트 생성 시작"
-            )
-            report_payload = _generate_report_for_model(
-                generator=generator,
-                model=model,
-                prompt=prompt,
-            )
-
-            if not report_payload:
-                logger.warning(
-                    f"⚠️ 모델 {model.name} 리포트 생성 실패: {stock_code}"
+            try:
+                logger.info(
+                    f"모델 {model.name} ({model.provider}/{model.model_identifier}) 리포트 생성 시작"
                 )
+                report_payload = _generate_report_for_model(
+                    generator=generator,
+                    model=model,
+                    prompt=prompt,
+                )
+
+                if not report_payload:
+                    logger.warning(
+                        f"⚠️ 모델 {model.name} 리포트 생성 실패 (빈 응답): {stock_code}"
+                    )
+                    failed_models.append(model.name)
+                    continue
+
+                summary = _build_summary_from_payload(
+                    stock_code=stock_code,
+                    model=model,
+                    report_payload=report_payload,
+                    total_predictions=total_predictions,
+                    up_count=up_count,
+                    down_count=down_count,
+                    hold_count=hold_count,
+                    avg_confidence=avg_confidence,
+                )
+                db.add(summary)
+                created_summaries.append(summary)
+                logger.info(
+                    f"  ✅ 모델 {model.name} 리포트 생성 완료 (stock={stock_code})"
+                )
+            except Exception as model_error:
+                logger.error(
+                    f"❌ 모델 {model.name} 리포트 생성 중 예외 발생: {model_error}",
+                    exc_info=True
+                )
+                failed_models.append(model.name)
                 continue
 
-            summary = _build_summary_from_payload(
-                stock_code=stock_code,
-                model=model,
-                report_payload=report_payload,
-                total_predictions=total_predictions,
-                up_count=up_count,
-                down_count=down_count,
-                hold_count=hold_count,
-                avg_confidence=avg_confidence,
-            )
-            db.add(summary)
-            created_summaries.append(summary)
-            logger.info(
-                f"  ✅ 모델 {model.name} 리포트 생성 완료 (stock={stock_code})"
-            )
-
+        # 모든 모델 실패 시 기존 리포트 유지 (롤백하지 않음)
         if not created_summaries:
-            logger.error(f"모든 모델 리포트 생성에 실패했습니다: {stock_code}")
+            logger.error(
+                f"❌ 모든 모델 리포트 생성 실패: {stock_code} "
+                f"(실패 모델: {', '.join(failed_models)})"
+            )
+            # 기존 리포트가 있으면 유지하기 위해 롤백하지 않음
             db.rollback()
+            # 기존 리포트 반환 (있으면)
+            if existing_summary:
+                logger.warning(
+                    f"⚠️ 기존 리포트 유지: {stock_code} "
+                    f"(마지막 업데이트: {existing_summary.last_updated})"
+                )
+                return existing_summary
             return None
 
-        db.commit()
-        for summary in created_summaries:
-            db.refresh(summary)
+        # DB 커밋 시도 (재시도 로직 포함)
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                db.commit()
+                for summary in created_summaries:
+                    db.refresh(summary)
 
-        return created_summaries[0]
+                # 일부 모델 실패 시 경고 로그
+                if failed_models:
+                    logger.warning(
+                        f"⚠️ 일부 모델 실패 (성공: {len(created_summaries)}/{len(active_models)}): "
+                        f"{stock_code} (실패 모델: {', '.join(failed_models)})"
+                    )
+                else:
+                    logger.info(
+                        f"✅ 모든 모델 리포트 생성 성공 ({len(created_summaries)}/{len(active_models)}): {stock_code}"
+                    )
+
+                return created_summaries[0]
+            except Exception as commit_error:
+                db.rollback()
+                if attempt < max_retries - 1:
+                    logger.warning(
+                        f"⚠️ DB 커밋 실패 (재시도 {attempt + 1}/{max_retries}): {commit_error}"
+                    )
+                    # 짧은 대기 후 재시도
+                    import time
+                    time.sleep(0.1 * (attempt + 1))
+                else:
+                    logger.error(
+                        f"❌ DB 커밋 최종 실패 ({max_retries}회 시도): {commit_error}",
+                        exc_info=True
+                    )
+                    # 기존 리포트 반환
+                    if existing_summary:
+                        logger.warning(
+                            f"⚠️ 커밋 실패로 기존 리포트 유지: {stock_code}"
+                        )
+                        return existing_summary
+                    return None
 
     except Exception as e:
         logger.error(f"종목 {stock_code}의 분석 요약 업데이트 실패: {e}", exc_info=True)
@@ -319,11 +377,6 @@ def get_stock_analysis_summary(
                         "based_on_prediction_count": meta_prediction_count,
                     },
                 }
-
-        # 레거시 custom_data 기반 A/B 리포트 (model_id 없이 저장된 경우) 지원
-        legacy_ab = _fetch_legacy_ab_summary(db, stock_code)
-        if legacy_ab:
-            return legacy_ab
 
         # A/B 비활성화 또는 모델 리포트 미존재 시 최신 리포트 1건 반환
         summary = _fetch_latest_summary(db, stock_code)
@@ -454,46 +507,6 @@ def _fetch_latest_summary(
         query = query.filter(StockAnalysisSummary.model_id == model_id)
 
     return query.order_by(StockAnalysisSummary.last_updated.desc()).first()
-
-
-def _fetch_legacy_ab_summary(
-    db: Session,
-    stock_code: str,
-) -> Optional[Dict[str, Any]]:
-    """레거시 custom_data(단일 row)에 저장된 A/B 리포트를 반환."""
-    summary = (
-        db.query(StockAnalysisSummary)
-        .filter(
-            StockAnalysisSummary.stock_code == stock_code,
-            StockAnalysisSummary.custom_data.isnot(None),
-        )
-        .order_by(StockAnalysisSummary.last_updated.desc())
-        .first()
-    )
-
-    if not summary:
-        return None
-
-    try:
-        custom_data = summary.custom_data or {}
-        if not isinstance(custom_data, dict):
-            return None
-
-        if not custom_data.get("ab_test_enabled"):
-            return None
-
-        meta = custom_data.get("meta") or {}
-        if not meta.get("last_updated"):
-            meta["last_updated"] = (
-                summary.last_updated.isoformat() if summary.last_updated else None
-            )
-        if not meta.get("based_on_prediction_count"):
-            meta["based_on_prediction_count"] = summary.based_on_prediction_count
-        custom_data["meta"] = meta
-
-        return custom_data
-    except Exception:
-        return None
 
 
 def _format_summary_output(

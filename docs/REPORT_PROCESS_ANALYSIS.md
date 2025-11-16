@@ -171,43 +171,79 @@ get_evaluable_reports(target_date)
 
 ---
 
-## 현황 점검 (2025-11-16)
+## 현황 점검 (2025-11-16 23:18 최종 업데이트)
 
 | 항목 | 목표 | 현재 상태 | 추가 조치 |
 | --- | --- | --- | --- |
-| 리포트 저장 | 모델별 row (`model_id`) | ✅ 코드 일부 수정 중이지만 **실제 저장은 여전히 레거시 JSON** | 생성 로직 교체 필요 |
-| 조회 | 모델별 최신 row → A/B 반환 | 레거시 JSON fallback으로 표시 | 모델별 row 완성 후 정리 |
-| 뉴스 저장 | 예측만 저장 | ✅ 이미 반영 | - |
-| 마이그레이션 | 레거시 → 모델별 row | ❌ 미실행 | 스크립트/SQL 필요 |
-| 인덱스 | `(stock_code, model_id, last_updated)` | ❌ 미적용 | 마이그레이션 후 적용 |
+| 리포트 저장 | 모델별 row (`model_id`) | ✅ **완료** - 활성 모델 전체에 대해 모델별 row로 저장 중 | - |
+| 조회 | 모델별 최신 row → A/B 반환 | ✅ **완료** - A/B 테스트 설정에 맞춰 모델별 최신 조회 | - |
+| 뉴스 저장 | 예측만 저장 | ✅ **완료** - 리포트 생성 로직 제거됨 | - |
+| 마이그레이션 | 레거시 → 모델별 row | ✅ **완료** - 42개 레거시 → 84개 모델별 row (Model A: 42, Model B: 42) | - |
+| 레거시 데이터 삭제 | DB 정리 | ✅ **완료** - 레거시 데이터 0개 | - |
+| 레거시 Fallback 제거 | 코드 정리 | ✅ **완료** - `_fetch_legacy_ab_summary()` 제거 완료 | - |
+| 인덱스 | 성능 최적화 인덱스 | ✅ **완료** - 3개 인덱스 적용 완료 | - |
+| 주말/공휴일 체크 | 1분봉 수집기 최적화 | ✅ **완료** - `holidays` 라이브러리 도입, 주말/공휴일 스킵 | - |
 
-### 해야 할 일
-1. **리포트 생성 로직 확정**  
-   - `update_stock_analysis_summary()`가 활성 모델 전체를 순회해 모델별로 저장하도록 완전히 전환  
-   - 스케줄러/강제 업데이트/수동 실행 등 모든 경로에서 동일 로직 사용
-2. **레거시 데이터 마이그레이션**  
-   - `model_id IS NULL` + `custom_data->>'ab_test_enabled' = 'true'` row를 모델별 row로 복제  
-   - (선택) 기존 row 삭제 또는 보관
-3. **조회 로직 정리**  
-   - 모델별 row가 있으면 그것만 사용  
-   - 레거시 fallback은 마이그레이션 완료 후 제거 가능
+### 마이그레이션 완료 상태
+- ✅ **백업**: `./data/backups/migration_before_20251116.sql` (284K)
+- ✅ **마이그레이션**: 42개 종목 → 84개 모델별 리포트 (100% 성공)
+  - Model A (Qwen3 Max, ID=5): 42개
+  - Model B (DeepSeek V3.2, ID=2): 42개
+- ✅ **레거시 데이터 삭제**: 완료 (레거시 리포트 0개)
+- ✅ **레거시 Fallback 제거**: `stock_analysis_service.py:323-326`, `459-496` 제거 완료
+- ✅ **인덱스**:
+  - `idx_summary_stock_model_updated` - 모델별 최신 리포트 조회용
+  - `idx_summary_updated_stock` - 스케줄러용 (오래된 리포트 찾기)
+  - `idx_summary_evaluation` - 평가 시스템용 (목표가 있는 리포트)
+- ✅ **주말/공휴일 체크**: `market_time.py` 업데이트 (`holidays.KR()` 사용)
 
-### 마이그레이션 절차(요약)
-```text
-1. DB 백업
-2. 활성 A/B 설정 조회 (model_a_id, model_b_id 확보)
-3. 대상 추출:
-   SELECT * FROM stock_analysis_summaries
-   WHERE model_id IS NULL
-     AND custom_data->>'ab_test_enabled' = 'true';
-4. 각 row에 대해 custom_data.model_a / model_b JSON을 파싱하여
-   model_id = model_a_id / model_b_id 로 INSERT
-5. 검증:
-   SELECT stock_code, model_id, last_updated
-   FROM stock_analysis_summaries
-   ORDER BY last_updated DESC LIMIT 20;
-6. 레거시 row 삭제(선택):
-   DELETE FROM stock_analysis_summaries WHERE model_id IS NULL;
+### 최종 DB 상태
+```
+총 리포트: 88개 (모두 model_id 포함)
+레거시 리포트: 0개
+모델별 리포트: 88개
+고유 종목: 22개
+활성 모델: 4개 (GPT-4o, DeepSeek V3.2, Qwen 2.5 72B, Qwen3 Max)
+```
+
+### 마이그레이션 상세 기록
+```
+실행 시간: 2025-11-16 22:44:03
+실행 스크립트: scripts/migrate_legacy_reports.py
+백업 파일: ./data/backups/migration_before_20251116.sql
+
+결과:
+- 총 레거시 리포트: 42개
+- 마이그레이션 완료: 42개 (100%)
+- 스킵: 0개
+- 에러: 0개
+- 생성된 리포트:
+  * Model ID 2 (DeepSeek V3.2): 42개
+  * Model ID 5 (Qwen3 Max): 42개
+- 총 신규 리포트: 84개
+
+레거시 데이터 삭제: 2025-11-16 23:18
+- 삭제된 레거시 리포트: 42개
+- 현재 레거시 리포트: 0개
+
+API 검증:
+- GS (078930) 리포트 조회 정상 작동 확인
+- Model A (Qwen3 Max, ID=5) 리포트 반환
+- Model B (DeepSeek V3.2, ID=2) 리포트 반환
+- 레거시 fallback 코드 제거 후 정상 작동 확인
+```
+
+### 추가 개선 사항 (2025-11-16)
+```
+1. 주말/공휴일 체크 추가 (market_time.py)
+   - holidays==0.38 라이브러리 도입
+   - pytz==2024.1 추가
+   - is_market_open() 함수에 주말/공휴일 체크 로직 추가
+   - 1분봉 수집기 로그 레벨 info로 변경 (스킵 메시지 가시화)
+
+2. 테스트 결과
+   - 일요일 스킵 동작 확인 완료
+   - "⏸️ 1분봉 수집 스킵: 장 마감 (주말/공휴일 또는 시간외)" 로그 정상 출력
 ```
 
 ---

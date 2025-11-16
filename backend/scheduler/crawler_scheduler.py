@@ -562,7 +562,7 @@ class CrawlerScheduler:
         """
         # 장 시간 체크
         if not is_market_open():
-            logger.debug("⏸️  1분봉 수집 스킵: 장 마감")
+            logger.info("⏸️  1분봉 수집 스킵: 장 마감 (주말/공휴일 또는 시간외)")
             return
 
         logger.info("=" * 60)

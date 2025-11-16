@@ -5,6 +5,7 @@
 """
 from datetime import datetime, time
 from pytz import timezone
+import holidays
 
 
 def get_market_phase() -> str:
@@ -72,10 +73,23 @@ def get_direction_threshold(market_phase: str) -> float:
 
 
 def is_market_open() -> bool:
-    """한국 증시 개장 여부 확인
+    """한국 증시 개장 여부 확인 (주말/공휴일 체크 포함)
 
     Returns:
         bool: 장중이면 True, 아니면 False
     """
+    kst = timezone('Asia/Seoul')
+    now = datetime.now(kst)
+
+    # 1. 주말 체크 (토요일=5, 일요일=6)
+    if now.weekday() >= 5:
+        return False
+
+    # 2. 한국 공휴일 체크 (자동으로 매년 업데이트)
+    kr_holidays = holidays.KR()
+    if now.date() in kr_holidays:
+        return False
+
+    # 3. 시간대 체크
     phase = get_market_phase()
     return phase in ["market_open", "trading", "market_close"]
