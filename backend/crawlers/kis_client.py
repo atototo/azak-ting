@@ -1177,6 +1177,106 @@ class KISClient:
             params=params
         )
 
+    async def get_financial_ratios(
+        self,
+        stock_code: str,
+        div_cls_code: str = "0"
+    ) -> Dict[str, Any]:
+        """
+        재무비율 조회 (TR_ID: FHKST66430300)
+
+        Args:
+            stock_code: 종목코드 (6자리)
+            div_cls_code: 분류코드 (0: 년, 1: 분기)
+
+        Returns:
+            {
+                "rt_cd": "0",  # 성공: "0", 실패: 비-0
+                "msg1": "정상처리",
+                "output": [
+                    {
+                        "stac_yymm": "202312",  # 결산년월
+                        "grs": "12.5",  # 매출액 증가율
+                        "bsop_prfi_inrt": "15.3",  # 영업이익 증가율
+                        "ntin_inrt": "18.7",  # 순이익 증가율
+                        "roe_val": "22.3",  # ROE
+                        "eps": "5500",  # EPS
+                        "bps": "45000",  # BPS
+                        "lblt_rate": "35.2",  # 부채비율
+                        "rsrv_rate": "1200.5"  # 유보율
+                    },
+                    ...  # 최근 3년 데이터
+                ]
+            }
+
+        Raises:
+            ValueError: 잘못된 파라미터
+            Exception: API 호출 실패 시
+        """
+        if not stock_code or len(stock_code) != 6:
+            raise ValueError(f"Invalid stock_code: {stock_code}")
+
+        if div_cls_code not in ["0", "1"]:
+            raise ValueError(f"Invalid div_cls_code: {div_cls_code}. Must be '0' or '1'")
+
+        # TR_ID: FHKST66430300 (모의/실전 공통)
+        tr_id = "FHKST66430300"
+
+        params = {
+            "FID_DIV_CLS_CODE": div_cls_code,  # 0: 년, 1: 분기
+            "fid_cond_mrkt_div_code": "J",  # J: 주식
+            "fid_input_iscd": stock_code
+        }
+
+        return await self.request(
+            method="GET",
+            endpoint="/uapi/domestic-stock/v1/quotations/inquire-financial-ratio",
+            tr_id=tr_id,
+            params=params
+        )
+
+    async def get_product_info(self, stock_code: str) -> Dict[str, Any]:
+        """
+        상품 기본정보 조회 (TR_ID: CTPF1604R)
+
+        Args:
+            stock_code: 종목코드 (6자리)
+
+        Returns:
+            {
+                "rt_cd": "0",
+                "msg1": "정상처리",
+                "output": {
+                    "prdt_name": "삼성전자",  # 상품명
+                    "prdt_clsf_name": "전기전자",  # 상품분류명
+                    "ivst_prdt_type_cd_name": "주권",  # 투자상품유형명
+                    "prdt_risk_grad_cd": "3",  # 위험등급코드
+                    "frst_erlm_dt": "19750611"  # 최초등록일
+                }
+            }
+
+        Raises:
+            ValueError: 잘못된 파라미터
+            Exception: API 호출 실패 시
+        """
+        if not stock_code or len(stock_code) != 6:
+            raise ValueError(f"Invalid stock_code: {stock_code}")
+
+        # TR_ID: CTPF1604R (모의/실전 공통)
+        tr_id = "CTPF1604R"
+
+        params = {
+            "PDNO": stock_code,
+            "PRDT_TYPE_CD": "300"  # 300: 주식
+        }
+
+        return await self.request(
+            method="GET",
+            endpoint="/uapi/domestic-stock/v1/quotations/inquire-product-baseinfo",
+            tr_id=tr_id,
+            params=params
+        )
+
     async def close(self):
         """리소스 정리"""
         logger.info("KIS API Client 종료")
