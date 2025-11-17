@@ -2,6 +2,7 @@
 User models for authentication and telegram bot subscribers.
 """
 from datetime import datetime
+from typing import Optional
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Index
 from backend.db.base import Base
 
@@ -17,6 +18,7 @@ class User(Base):
         password_hash: bcrypt 해시된 비밀번호
         role: 사용자 역할 ('user' | 'admin')
         is_active: 활성화 상태
+        expired_date: 구독 만료일 (None이면 무제한)
         created_at: 생성 시간
         updated_at: 수정 시간
     """
@@ -29,6 +31,7 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     role = Column(String(20), nullable=False, default="user", index=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    expired_date = Column(DateTime, nullable=True, default=None)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

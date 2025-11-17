@@ -1751,10 +1751,13 @@ class StockPredictor:
             }
 
         # 비교 분석
+        conf_a = pred_a.get("confidence") or 0
+        conf_b = pred_b.get("confidence") or 0
+
         comparison = {
             "agreement": pred_a.get("prediction") == pred_b.get("prediction"),
-            "confidence_diff": abs(pred_a.get("confidence", 0) - pred_b.get("confidence", 0)),
-            "stronger_model": "model_a" if pred_a.get("confidence", 0) > pred_b.get("confidence", 0) else "model_b",
+            "confidence_diff": abs(conf_a - conf_b),
+            "stronger_model": "model_a" if conf_a > conf_b else "model_b",
             "prediction_match": pred_a.get("prediction") == pred_b.get("prediction"),
         }
 

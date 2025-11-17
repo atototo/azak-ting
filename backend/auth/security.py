@@ -106,6 +106,11 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[User]:
         return None
     if not user.is_active:
         return None
+
+    # 유효기간 체크 (expired_date가 설정된 경우)
+    if user.expired_date and user.expired_date < datetime.utcnow():
+        return None
+
     if not verify_password(password, user.password_hash):
         return None
     return user
@@ -122,4 +127,12 @@ def get_user_by_id(db: Session, user_id: int) -> Optional[User]:
     Returns:
         User | None: 사용자 객체 (없으면 None)
     """
-    return db.query(User).filter(User.id == user_id, User.is_active == True).first()
+    user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+    if not user:
+        return None
+
+    # 유효기간 체크 (expired_date가 설정된 경우)
+    if user.expired_date and user.expired_date < datetime.utcnow():
+        return None
+
+    return user

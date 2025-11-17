@@ -4,6 +4,7 @@
 사용자 CRUD 작업을 제공합니다.
 """
 from typing import List
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr, validator
@@ -24,6 +25,7 @@ class UserCreate(BaseModel):
     nickname: str
     password: str
     role: str = "user"
+    expired_date: str | None = None  # ISO 8601 형식 문자열 (예: "2025-12-31T23:59:59")
 
     @validator("password")
     def validate_password(cls, v):
@@ -46,6 +48,7 @@ class UserUpdate(BaseModel):
     password: str | None = None
     role: str | None = None
     is_active: bool | None = None
+    expired_date: str | None = None  # ISO 8601 형식 문자열 (None으로 설정 시 무제한)
 
     @validator("password")
     def validate_password(cls, v):
@@ -69,6 +72,7 @@ class UserResponse(BaseModel):
     nickname: str
     role: str
     is_active: bool
+    expired_date: str | None
     created_at: str
     updated_at: str
 
@@ -99,6 +103,7 @@ async def list_users(
             nickname=user.nickname,
             role=user.role,
             is_active=user.is_active,
+            expired_date=user.expired_date.isoformat() if user.expired_date else None,
             created_at=user.created_at.isoformat(),
             updated_at=user.updated_at.isoformat(),
         )
@@ -137,13 +142,25 @@ async def create_user(
     # 비밀번호 해싱
     password_hash = hash_password(user_data.password)
 
+    # expired_date 파싱 (문자열 → datetime)
+    expired_date_obj = None
+    if user_data.expired_date:
+        try:
+            expired_date_obj = datetime.fromisoformat(user_data.expired_date)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="유효하지 않은 날짜 형식입니다 (ISO 8601 형식 필요)"
+            )
+
     # 사용자 생성
     new_user = User(
         email=user_data.email,
         nickname=user_data.nickname,
         password_hash=password_hash,
         role=user_data.role,
-        is_active=True
+        is_active=True,
+        expired_date=expired_date_obj
     )
 
     db.add(new_user)
@@ -156,6 +173,7 @@ async def create_user(
         nickname=new_user.nickname,
         role=new_user.role,
         is_active=new_user.is_active,
+        expired_date=new_user.expired_date.isoformat() if new_user.expired_date else None,
         created_at=new_user.created_at.isoformat(),
         updated_at=new_user.updated_at.isoformat(),
     )
@@ -200,6 +218,18 @@ async def update_user(
         user.role = user_data.role
     if user_data.is_active is not None:
         user.is_active = user_data.is_active
+    if user_data.expired_date is not None:
+        # 빈 문자열 또는 "null"인 경우 None으로 설정 (무제한)
+        if user_data.expired_date == "" or user_data.expired_date.lower() == "null":
+            user.expired_date = None
+        else:
+            try:
+                user.expired_date = datetime.fromisoformat(user_data.expired_date)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="유효하지 않은 날짜 형식입니다 (ISO 8601 형식 필요)"
+                )
 
     db.commit()
     db.refresh(user)
@@ -210,6 +240,7 @@ async def update_user(
         nickname=user.nickname,
         role=user.role,
         is_active=user.is_active,
+        expired_date=user.expired_date.isoformat() if user.expired_date else None,
         created_at=user.created_at.isoformat(),
         updated_at=user.updated_at.isoformat(),
     )

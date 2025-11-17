@@ -12,6 +12,7 @@ interface User {
   nickname: string;
   role: "user" | "admin";
   is_active: boolean;
+  expired_date: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -24,6 +25,7 @@ interface UserFormData {
   nickname: string;
   password: string;
   role: "user" | "admin";
+  expired_date: string;
 }
 
 /**
@@ -36,6 +38,7 @@ export default function UsersPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [showActionMenu, setShowActionMenu] = useState<number | null>(null);
 
   // 폼 데이터
   const [formData, setFormData] = useState<UserFormData>({
@@ -43,6 +46,7 @@ export default function UsersPage() {
     nickname: "",
     password: "",
     role: "user",
+    expired_date: "",
   });
 
   // 비밀번호 변경 폼
@@ -82,13 +86,22 @@ export default function UsersPage() {
     setError("");
 
     try {
+      // expired_date를 ISO 형식으로 변환 (빈 값이면 null)
+      // 로컬 시간대를 유지하면서 ISO 형식으로 변환
+      const payload = {
+        ...formData,
+        expired_date: formData.expired_date
+          ? formData.expired_date + ":00" // "2025-11-17T12:00" -> "2025-11-17T12:00:00"
+          : null,
+      };
+
       const response = await fetch("/api/users", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         credentials: "include",
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -98,7 +111,7 @@ export default function UsersPage() {
 
       await fetchUsers();
       setShowCreateModal(false);
-      setFormData({ email: "", nickname: "", password: "", role: "user" });
+      setFormData({ email: "", nickname: "", password: "", role: "user", expired_date: "" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "오류가 발생했습니다");
     }
@@ -118,6 +131,11 @@ export default function UsersPage() {
         nickname: editingUser.nickname,
         role: editingUser.role,
         is_active: editingUser.is_active,
+        expired_date: editingUser.expired_date
+          ? (editingUser.expired_date.includes("T")
+              ? editingUser.expired_date + ":00" // "2025-11-17T12:00" -> "2025-11-17T12:00:00"
+              : editingUser.expired_date) // 이미 ISO 형식인 경우
+          : null,
       };
 
       if (newPassword) {
@@ -222,8 +240,10 @@ export default function UsersPage() {
             <p className="mt-4 text-gray-600">로딩 중...</p>
           </div>
         ) : (
-          <div className="bg-white shadow-md rounded-lg overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-200">
+          <>
+            {/* 데스크톱 테이블 뷰 */}
+            <div className="hidden md:block bg-white shadow-md rounded-lg overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -237,6 +257,9 @@ export default function UsersPage() {
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     상태
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    유효기간
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     가입일
@@ -278,36 +301,139 @@ export default function UsersPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {user.expired_date ? (
+                        <span className={
+                          new Date(user.expired_date) < new Date()
+                            ? "text-red-600 font-semibold"
+                            : "text-gray-700"
+                        }>
+                          {new Date(user.expired_date).toLocaleDateString("ko-KR")}
+                        </span>
+                      ) : (
+                        <span className="text-blue-600">무제한</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {new Date(user.created_at).toLocaleDateString("ko-KR")}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                      <button
-                        onClick={() => {
-                          setEditingUser(user);
-                          setShowEditModal(true);
-                        }}
-                        className="text-blue-600 hover:text-blue-900"
-                      >
-                        수정
-                      </button>
-                      <button
-                        onClick={() => handleToggleActive(user)}
-                        className="text-yellow-600 hover:text-yellow-900"
-                      >
-                        {user.is_active ? "비활성화" : "활성화"}
-                      </button>
-                      <button
-                        onClick={() => handleDeleteUser(user.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        삭제
-                      </button>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <div className="relative inline-block">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowActionMenu(showActionMenu === user.id ? null : user.id);
+                          }}
+                          className="text-gray-400 hover:text-gray-600 p-2"
+                        >
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"/>
+                          </svg>
+                        </button>
+                        {showActionMenu === user.id && (
+                          <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10 border border-gray-200">
+                            <div className="py-1">
+                              <button
+                                onClick={() => {
+                                  setEditingUser(user);
+                                  setShowEditModal(true);
+                                  setShowActionMenu(null);
+                                }}
+                                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50"
+                              >
+                                ✏️ 수정
+                              </button>
+                              <button
+                                onClick={() => {
+                                  handleToggleActive(user);
+                                  setShowActionMenu(null);
+                                }}
+                                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-yellow-50"
+                              >
+                                🔄 {user.is_active ? "비활성화" : "활성화"}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  handleDeleteUser(user.id);
+                                  setShowActionMenu(null);
+                                }}
+                                className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                              >
+                                🗑️ 삭제
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+
+          {/* 모바일 카드 뷰 */}
+          <div className="md:hidden space-y-4">
+            {users.map((user) => (
+              <div key={user.id} className="bg-white shadow-md rounded-lg p-4">
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-gray-900">{user.nickname}</h3>
+                    <p className="text-sm text-gray-600">{user.email}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                      user.role === "admin" ? "bg-blue-100 text-blue-800" : "bg-gray-100 text-gray-800"
+                    }`}>
+                      {user.role === "admin" ? "관리자" : "사용자"}
+                    </span>
+                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                      user.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                    }`}>
+                      {user.is_active ? "활성" : "비활성"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-2 text-sm mb-4">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">유효기간:</span>
+                    <span className={user.expired_date && new Date(user.expired_date) < new Date() ? "text-red-600 font-semibold" : "text-gray-900"}>
+                      {user.expired_date ? new Date(user.expired_date).toLocaleDateString("ko-KR") : <span className="text-blue-600">무제한</span>}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">가입일:</span>
+                    <span className="text-gray-900">{new Date(user.created_at).toLocaleDateString("ko-KR")}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    onClick={() => {
+                      setEditingUser(user);
+                      setShowEditModal(true);
+                    }}
+                    className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm"
+                  >
+                    ✏️ 수정
+                  </button>
+                  <button
+                    onClick={() => handleToggleActive(user)}
+                    className="px-3 py-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 transition-colors text-sm"
+                  >
+                    🔄
+                  </button>
+                  <button
+                    onClick={() => handleDeleteUser(user.id)}
+                    className="px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-sm"
+                  >
+                    🗑️
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          </>
         )}
 
         {/* 사용자 생성 모달 */}
@@ -366,12 +492,34 @@ export default function UsersPage() {
                     <option value="admin">관리자</option>
                   </select>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    유효기간 (선택사항)
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={formData.expired_date || ""}
+                    onChange={(e) => {
+                      console.log("Selected datetime:", e.target.value);
+                      setFormData({ ...formData, expired_date: e.target.value });
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    비워두면 무제한으로 설정됩니다
+                  </p>
+                  {formData.expired_date && (
+                    <p className="mt-1 text-xs text-blue-600">
+                      선택된 값: {formData.expired_date}
+                    </p>
+                  )}
+                </div>
                 <div className="flex justify-end space-x-2 mt-6">
                   <button
                     type="button"
                     onClick={() => {
                       setShowCreateModal(false);
-                      setFormData({ email: "", nickname: "", password: "", role: "user" });
+                      setFormData({ email: "", nickname: "", password: "", role: "user", expired_date: "" });
                     }}
                     className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors"
                   >
@@ -445,6 +593,36 @@ export default function UsersPage() {
                     <option value="user">사용자</option>
                     <option value="admin">관리자</option>
                   </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    유효기간 (선택사항)
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={
+                      editingUser.expired_date
+                        ? (() => {
+                            try {
+                              // ISO 형식 문자열을 datetime-local 형식으로 변환
+                              // "2025-11-17T12:00:00" -> "2025-11-17T12:00"
+                              const dateStr = editingUser.expired_date.slice(0, 16);
+                              return dateStr;
+                            } catch {
+                              return "";
+                            }
+                          })()
+                        : ""
+                    }
+                    onChange={(e) => {
+                      console.log("Edit - Selected datetime:", e.target.value);
+                      setEditingUser({ ...editingUser, expired_date: e.target.value || null });
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    비워두면 무제한으로 설정됩니다
+                  </p>
                 </div>
                 <div className="flex justify-end space-x-2 mt-6">
                   <button
