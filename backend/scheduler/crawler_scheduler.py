@@ -1037,8 +1037,8 @@ class CrawlerScheduler:
         )
 
         # 리포트 생성 (하루 3번 - 장 시작 후, 점심 후, 장 마감 후)
-        # 장 시작 후 (09:15)
-        report_morning_trigger = CronTrigger(hour=9, minute=15)
+        # 장 시작 후 (10:00)
+        report_morning_trigger = CronTrigger(hour=10, minute=0)
         self.scheduler.add_job(
             func=lambda: asyncio.run(self._generate_stock_reports()),
             trigger=report_morning_trigger,
@@ -1086,7 +1086,7 @@ class CrawlerScheduler:
         logger.info("   - 종목별 검색: 10분마다")
         logger.info("   - DART 공시: 5분마다")
         logger.info("   - KIS 일봉 수집: 매일 15:40 (장 마감 후)")
-        logger.info("   - 투자 리포트: 매일 09:15 (장초), 13:00 (장중), 15:45 (장마감 - 일봉 수집 후)")
+        logger.info("   - 투자 리포트: 매일 10:00 (장초), 13:00 (장중), 15:45 (장마감 - 일봉 수집 후)")
         logger.info("   - KIS 1분봉 수집: 매 1분 (장 시간만)")
         logger.info("   - KIS 시장 데이터: 매 5분 (호가, 현재가, 업종지수 - 장 시간만)")
         logger.info("   - 투자자별 매매동향: 매일 16:00 (장 마감 후)")

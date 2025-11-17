@@ -44,14 +44,30 @@ class MinutePriceCollector:
             # KIS Client
             client = await get_kis_client()
 
+            # 현재 시각을 start_time으로 사용 (최신 데이터 조회)
+            from datetime import datetime
+            current_time = datetime.now().strftime("%H%M%S")
+            logger.info(f"📌 {stock_code}: 현재 시각 {current_time}부터 조회")
+
             # 1분봉 조회
-            result = await client.get_minute_prices(stock_code=stock_code)
+            result = await client.get_minute_prices(stock_code=stock_code, start_time=current_time)
+
+            # 디버그: API 응답 확인
+            logger.info(f"🔍 {stock_code}: API 응답 키 = {list(result.keys())}")
 
             # output2 확인
             output2 = result.get("output2", [])
 
+            if output2:
+                logger.info(f"🔍 {stock_code}: output2 데이터 {len(output2)}건 수신")
+                # 첫 번째 데이터 샘플 출력
+                if len(output2) > 0:
+                    logger.info(f"🔍 {stock_code}: 샘플 데이터 = {output2[0]}")
+            else:
+                logger.warning(f"⚠️  {stock_code}: output2 데이터 없음")
+                logger.info(f"🔍 {stock_code}: 전체 API 응답 = {result}")
+
             if not output2:
-                logger.warning(f"⚠️  {stock_code}: 1분봉 데이터 없음")
                 self.skipped_count += 1
                 return {
                     "stock_code": stock_code,
@@ -64,7 +80,10 @@ class MinutePriceCollector:
             saved_count = await self._save_to_db(stock_code, output2)
 
             self.collected_count += saved_count
-            logger.info(f"✅ {stock_code}: {saved_count}건 저장")
+            if saved_count > 0:
+                logger.info(f"✅ {stock_code}: {saved_count}건 저장")
+            else:
+                logger.info(f"⏭️  {stock_code}: 0건 저장 (모두 중복 데이터)")
 
             return {
                 "stock_code": stock_code,

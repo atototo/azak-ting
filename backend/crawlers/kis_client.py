@@ -927,8 +927,11 @@ class KISClient:
                 }
             }
         """
-        # TR_ID: FHKUP03500100 (모의/실전 공통)
-        tr_id = "FHKUP03500100"
+        if self.mock_mode:
+            raise ValueError("업종 현재지수는 모의투자에서 지원하지 않습니다 (실전투자 전용)")
+
+        # TR_ID: FHPUP02100000 (실전투자 전용)
+        tr_id = "FHPUP02100000"
 
         params = {
             "FID_COND_MRKT_DIV_CODE": "U",  # 시장 구분 (U: 업종)

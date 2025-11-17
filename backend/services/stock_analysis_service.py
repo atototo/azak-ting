@@ -537,6 +537,25 @@ def _format_summary_output(
         "long_term_target": summary.long_term_target_price,
     }
 
+    # JSON 문자열 파싱
+    risk_factors = summary.risk_factors
+    if isinstance(risk_factors, str):
+        try:
+            risk_factors = json.loads(risk_factors)
+        except:
+            risk_factors = []
+    elif risk_factors is None:
+        risk_factors = []
+
+    opportunity_factors = summary.opportunity_factors
+    if isinstance(opportunity_factors, str):
+        try:
+            opportunity_factors = json.loads(opportunity_factors)
+        except:
+            opportunity_factors = []
+    elif opportunity_factors is None:
+        opportunity_factors = []
+
     return {
         "model_id": summary.model_id,
         "model_name": model_info.name if model_info else None,
@@ -544,8 +563,8 @@ def _format_summary_output(
         "short_term_scenario": summary.short_term_scenario,
         "medium_term_scenario": summary.medium_term_scenario,
         "long_term_scenario": summary.long_term_scenario,
-        "risk_factors": summary.risk_factors or [],
-        "opportunity_factors": summary.opportunity_factors or [],
+        "risk_factors": risk_factors,
+        "opportunity_factors": opportunity_factors,
         "recommendation": summary.recommendation,
         "price_targets": price_targets,
         "statistics": statistics,
