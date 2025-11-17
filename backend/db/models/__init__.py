@@ -16,6 +16,7 @@ from backend.db.models.market_data import (
     IndexDailyPrice,
     StockOvertimePrice,
 )
+from backend.db.models.financial import ProductInfo, FinancialRatio
 
 __all__ = [
     "Base",
@@ -34,4 +35,6 @@ __all__ = [
     "SectorIndex",
     "IndexDailyPrice",
     "StockOvertimePrice",
+    "ProductInfo",
+    "FinancialRatio",
 ]
