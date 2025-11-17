@@ -6,7 +6,7 @@
 **우선순위**: P0 (필수)
 **스토리 포인트**: 5
 **담당**: 백엔드 개발자
-**상태**: Todo → In Progress → Code Review → Done
+**상태**: ✅ Done
 
 ---
 
