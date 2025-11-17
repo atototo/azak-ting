@@ -4,7 +4,7 @@
 비밀번호 해싱, 세션 관리, 사용자 검증 등의 기능을 제공합니다.
 """
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Tuple
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
@@ -89,7 +89,7 @@ def verify_session_token(token: str) -> Optional[dict]:
         return None
 
 
-def authenticate_user(db: Session, email: str, password: str) -> Optional[User]:
+def authenticate_user(db: Session, email: str, password: str) -> Tuple[Optional[User], Optional[str]]:
     """
     이메일과 비밀번호로 사용자를 인증합니다.
 
@@ -99,21 +99,23 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[User]:
         password: 평문 비밀번호
 
     Returns:
-        User | None: 인증된 사용자 객체 (실패 시 None)
+        Tuple[User | None, str | None]: (인증된 사용자 객체, 에러 메시지)
+        - 성공: (User, None)
+        - 실패: (None, "invalid_credentials" | "expired" | "inactive")
     """
     user = db.query(User).filter(User.email == email).first()
     if not user:
-        return None
+        return (None, "invalid_credentials")
     if not user.is_active:
-        return None
+        return (None, "inactive")
 
     # 유효기간 체크 (expired_date가 설정된 경우)
     if user.expired_date and user.expired_date < datetime.utcnow():
-        return None
+        return (None, "expired")
 
     if not verify_password(password, user.password_hash):
-        return None
-    return user
+        return (None, "invalid_credentials")
+    return (user, None)
 
 
 def get_user_by_id(db: Session, user_id: int) -> Optional[User]:

@@ -63,12 +63,24 @@ async def login(
         HTTPException: 401 (인증 실패)
     """
     # 사용자 인증
-    user = authenticate_user(db, credentials.email, credentials.password)
+    user, error_reason = authenticate_user(db, credentials.email, credentials.password)
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="이메일 또는 비밀번호가 올바르지 않습니다"
-        )
+        # 에러 타입에 따라 다른 메시지 반환
+        if error_reason == "expired":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="계정 유효기간이 만료되었습니다. 관리자에게 문의하세요."
+            )
+        elif error_reason == "inactive":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="비활성화된 계정입니다. 관리자에게 문의하세요."
+            )
+        else:  # invalid_credentials
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="이메일 또는 비밀번호가 올바르지 않습니다"
+            )
 
     # 세션 토큰 생성
     session_token = create_session_token(user.id, user.email, user.role)
