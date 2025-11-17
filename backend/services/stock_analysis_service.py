@@ -446,6 +446,10 @@ def _build_summary_from_payload(
     price_targets = report_payload.get("price_targets") or {}
     now = datetime.now()
 
+    # JSON 필드는 직렬화된 문자열로 저장
+    risk_factors = report_payload.get("risk_factors", [])
+    opportunity_factors = report_payload.get("opportunity_factors", [])
+
     return StockAnalysisSummary(
         stock_code=stock_code,
         model_id=model.id,
@@ -453,14 +457,14 @@ def _build_summary_from_payload(
         short_term_scenario=report_payload.get("short_term_scenario"),
         medium_term_scenario=report_payload.get("medium_term_scenario"),
         long_term_scenario=report_payload.get("long_term_scenario"),
-        risk_factors=report_payload.get("risk_factors", []),
-        opportunity_factors=report_payload.get("opportunity_factors", []),
+        risk_factors=json.dumps(risk_factors) if isinstance(risk_factors, list) else risk_factors,
+        opportunity_factors=json.dumps(opportunity_factors) if isinstance(opportunity_factors, list) else opportunity_factors,
         recommendation=report_payload.get("recommendation"),
-        custom_data={
+        custom_data=json.dumps({
             "model_id": model.id,
             "model_name": model.name,
             "raw_report": report_payload,
-        },
+        }),
         total_predictions=total_predictions,
         up_count=up_count,
         down_count=down_count,

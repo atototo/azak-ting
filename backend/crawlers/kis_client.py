@@ -35,7 +35,17 @@ class RateLimiter:
     async def acquire(self):
         """Rate limit 획득 (필요 시 대기)"""
         # Lazy initialization: Lock 생성 (event loop가 실행 중일 때만)
-        if self._lock is None:
+        # 이벤트 루프가 변경되면 Lock 재생성 필요
+        try:
+            if self._lock is None:
+                self._lock = asyncio.Lock()
+            # 현재 이벤트 루프 확인
+            loop = asyncio.get_running_loop()
+            if self._lock._loop is not loop:
+                # 이벤트 루프가 변경되면 새로운 Lock 생성
+                self._lock = asyncio.Lock()
+        except AttributeError:
+            # Lock에 _loop 속성이 없으면 재생성
             self._lock = asyncio.Lock()
 
         async with self._lock:
