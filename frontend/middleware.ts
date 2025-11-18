@@ -8,10 +8,24 @@ import type { NextRequest } from "next/server";
  * 비인증 사용자를 로그인 페이지로 리다이렉트합니다.
  */
 export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const { pathname, searchParams } = request.nextUrl;
 
   // 로그인 페이지와 API 엔드포인트는 체크하지 않음
   if (pathname === "/login" || pathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
+
+  // 프리뷰 URL 처리 (블로그 캡처용)
+  if (pathname.startsWith("/preview/")) {
+    const token = searchParams.get("token");
+    const validToken = process.env.PREVIEW_TOKEN;
+
+    // 토큰 검증
+    if (!token || !validToken || token !== validToken) {
+      return new NextResponse("Unauthorized: Invalid preview token", { status: 401 });
+    }
+
+    // 토큰이 유효하면 통과 (인증 우회)
     return NextResponse.next();
   }
 

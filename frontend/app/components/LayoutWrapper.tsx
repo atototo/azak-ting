@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/app/contexts/AuthContext";
 import Navigation from "./Navigation";
 import PredictionStatusBanner from "./PredictionStatusBanner";
+import Footer from "./Footer";
 
 /**
  * 레이아웃 래퍼 컴포넌트
@@ -14,9 +15,10 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
   const pathname = usePathname();
   const { loading, isAuthenticated } = useAuth();
 
-  // 로그인 페이지에서는 네비게이션과 배너를 숨김
+  // 로그인 페이지와 프리뷰 페이지에서는 네비게이션과 배너를 숨김
   const isLoginPage = pathname === "/login";
-  const shouldShowNavigation = !isLoginPage && isAuthenticated;
+  const isPreviewPage = pathname.startsWith("/preview/");
+  const shouldShowNavigation = !isLoginPage && !isPreviewPage && isAuthenticated;
 
   // 로딩 중에는 스피너 표시
   if (loading) {
@@ -39,6 +41,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
         </>
       )}
       {children}
+      <Footer />
     </>
   );
 }
