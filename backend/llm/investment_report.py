@@ -19,7 +19,6 @@ from backend.db.models.market_data import (
     StockOrderbook,
     StockCurrentPrice,
     InvestorTrading,
-    StockInfo,
 )
 
 
@@ -225,18 +224,11 @@ class InvestmentReportGenerator:
                         "close_price": inv.stck_clpr,
                     })
 
-            # 4. 종목 기본정보
-            stock_info = db.query(StockInfo).filter(
-                StockInfo.stock_code == stock_code
-            ).order_by(StockInfo.updated_at.desc()).first()
-
-            if stock_info:
-                kis_data["stock_info"] = {
-                    "industry": stock_info.std_idst_clsf_cd_name,  # 업종명
-                    "market_cap": stock_info.hts_avls,  # 시가총액
-                    "listed_shares": stock_info.lstn_stcn,  # 상장주식수
-                    "capital": stock_info.cpfn,  # 자본금
-                }
+            # 4. 시장 지수 (KOSPI/KOSDAQ)
+            from backend.utils.market_index import get_market_indices
+            market_indices = get_market_indices(db)
+            if market_indices:
+                kis_data["market_indices"] = market_indices
 
             return kis_data
 
@@ -372,6 +364,15 @@ class InvestmentReportGenerator:
 
         sections = []
 
+        # 0. 시장 지수 (KOSPI/KOSDAQ)
+        market_indices = kis_data.get("market_indices")
+        if market_indices:
+            from backend.utils.market_index import format_market_indices
+            market_text = format_market_indices(market_indices)
+            if market_text and market_text != "시장 지수 데이터 없음":
+                sections.append(f"""### 시장 전체 동향
+{market_text}""")
+
         # 1. 호가 데이터
         orderbook = kis_data.get("orderbook")
         if orderbook:
@@ -434,19 +435,6 @@ class InvestmentReportGenerator:
             trend_lines.append(f"\n**해석**: {main_buyer}이 주도적으로 {main_action} 중")
 
             sections.append(f"""### 투자자별 매매동향 (최근 5일)\n{chr(10).join(trend_lines)}""")
-
-        # 4. 종목 기본정보
-        stock_info = kis_data.get("stock_info")
-        if stock_info:
-            market_cap = stock_info.get("market_cap") or 0
-            listed_shares = stock_info.get("listed_shares") or 0
-            capital = stock_info.get("capital") or 0
-
-            sections.append(f"""### 종목 기본정보
-- 업종: {stock_info.get("industry") or "N/A"}
-- 시가총액: {market_cap:,}원
-- 상장주식수: {listed_shares:,}주
-- 자본금: {capital:,}원""")
 
         return "\n\n".join(sections)
 
@@ -887,6 +875,17 @@ def build_adaptive_analysis_prompt(context: Dict[str, Any]) -> str:
 {', '.join(missing_sources) if missing_sources else '없음'}
 
 ## 📈 분석 데이터
+"""
+
+    # 0. 시장 지수 (KOSPI/KOSDAQ)
+    market_indices = context.get("market_indices")
+    if market_indices:
+        from backend.utils.market_index import format_market_indices
+        market_text = format_market_indices(market_indices)
+        if market_text and market_text != "시장 지수 데이터 없음":
+            prompt += f"""
+### 📊 시장 전체 동향
+{market_text}
 """
 
     # 1. 현재가 정보 (상세)

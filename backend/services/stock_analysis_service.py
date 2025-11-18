@@ -149,14 +149,13 @@ async def generate_stock_report(
 
         logger.info(f"📋 Generating reports for {len(active_models)} active models")
 
-        # 5. 각 모델별로 리포트 생성
+        # 5. 각 모델별로 리포트 생성 (병렬 처리)
         from backend.llm.investment_report import get_report_generator
         generator = get_report_generator()
 
-        created_summaries: List[StockAnalysisSummary] = []
-        failed_models = []
-
-        for model in active_models:
+        # 병렬 처리를 위한 헬퍼 함수
+        async def generate_for_single_model(model: Model):
+            """단일 모델에 대한 리포트 생성 (비동기)"""
             try:
                 logger.info(f"  🔄 Generating report with {model.name} ({model.provider})")
 
@@ -181,7 +180,10 @@ async def generate_stock_report(
                 if model.provider != "openrouter":
                     kwargs["response_format"] = {"type": "json_object"}
 
-                response = client.chat.completions.create(**kwargs)
+                # 동기 API를 asyncio.to_thread로 비동기 처리
+                response = await asyncio.to_thread(
+                    client.chat.completions.create, **kwargs
+                )
                 result_text = response.choices[0].message.content
 
                 # OpenRouter JSON 추출
@@ -191,7 +193,7 @@ async def generate_stock_report(
                 # JSON 파싱
                 report_data = json.loads(result_text)
 
-                # DB에 저장
+                # StockAnalysisSummary 객체 생성
                 summary = StockAnalysisSummary(
                     stock_code=stock_code,
                     model_id=model.id,
@@ -217,17 +219,37 @@ async def generate_stock_report(
                     long_term_target_price=report_data.get("price_targets", {}).get("long_term_target"),
                 )
 
-                db.add(summary)
-                created_summaries.append(summary)
                 logger.info(f"  ✅ {model.name} report created (confidence={summary.confidence_level})")
+                return {"success": True, "model": model, "summary": summary}
 
             except Exception as model_error:
                 logger.error(
                     f"  ❌ {model.name} report generation failed: {model_error}",
                     exc_info=True
                 )
-                failed_models.append(model.name)
+                return {"success": False, "model": model, "error": str(model_error)}
+
+        # 모든 모델을 병렬로 실행
+        logger.info(f"  🚀 Starting parallel report generation for {len(active_models)} models")
+        tasks = [generate_for_single_model(model) for model in active_models]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # 결과 처리
+        created_summaries: List[StockAnalysisSummary] = []
+        failed_models = []
+
+        for result in results:
+            if isinstance(result, Exception):
+                logger.error(f"  ❌ Unexpected exception in task: {result}", exc_info=result)
+                failed_models.append("unknown")
                 continue
+
+            if result.get("success"):
+                summary = result["summary"]
+                db.add(summary)
+                created_summaries.append(summary)
+            else:
+                failed_models.append(result["model"].name)
 
         # 모든 모델 실패 시
         if not created_summaries:
@@ -403,6 +425,11 @@ async def build_analysis_context_from_db(stock_code: str, db: Session) -> Dict[s
 
     context["technical_indicators"] = technical_indicators
     context["data_sources"]["technical_indicators"] = bool(technical_indicators)
+
+    # 시장 지수 (KOSPI/KOSDAQ)
+    from backend.utils.market_index import get_market_indices
+    market_indices = get_market_indices(db)
+    context["market_indices"] = market_indices
 
     # Tier 3: 선택 (뉴스)
     news = db.query(NewsArticle).filter(
@@ -952,6 +979,23 @@ def _format_summary_output(
     elif opportunity_factors is None:
         opportunity_factors = []
 
+    # US-004: 메타데이터 파싱
+    data_sources_used = summary.data_sources_used
+    if isinstance(data_sources_used, str):
+        try:
+            data_sources_used = json.loads(data_sources_used)
+        except:
+            data_sources_used = None
+
+    limitations = summary.limitations
+    if isinstance(limitations, str):
+        try:
+            limitations = json.loads(limitations)
+        except:
+            limitations = []
+    elif limitations is None:
+        limitations = []
+
     return {
         "model_id": summary.model_id,
         "model_name": model_info.name if model_info else None,
@@ -964,6 +1008,11 @@ def _format_summary_output(
         "recommendation": summary.recommendation,
         "price_targets": price_targets,
         "statistics": statistics,
+        # US-004: 메타데이터 추가
+        "confidence_level": summary.confidence_level,
+        "data_sources_used": data_sources_used,
+        "limitations": limitations,
+        "data_completeness_score": summary.data_completeness_score,
         "meta": {
             "last_updated": summary.last_updated.isoformat()
             if summary.last_updated

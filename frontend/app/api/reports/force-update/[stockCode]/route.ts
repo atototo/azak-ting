@@ -17,6 +17,13 @@ export async function POST(
     const response = await fetch(`${backendUrl}/api/reports/force-update/${stockCode}`, {
       method: 'POST',
       signal: controller.signal,
+      headers: {
+        'Connection': 'keep-alive',
+      },
+      // Next.js fetch에 명시적으로 캐시 비활성화
+      cache: 'no-store',
+      // Node.js fetch의 타임아웃 처리 (keepalive 설정)
+      keepalive: true,
     });
 
     clearTimeout(timeoutId);

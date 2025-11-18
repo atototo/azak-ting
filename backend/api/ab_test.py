@@ -245,18 +245,34 @@ async def update_ab_config(config: ABConfigCreate):
 @router.get("/prediction-status")
 async def get_prediction_status():
     """
-    예측 생성 진행 상태 조회
+    예측 생성 및 리포트 생성 진행 상태 조회
 
     Returns:
-        진행 중인 예측 생성 작업 목록
+        진행 중인 예측 생성 작업 목록 + 리포트 생성 상태
     """
     try:
         tracker = get_tracker()
         active_tasks = tracker.get_all_active_tasks()
 
+        # 리포트 생성 상태 가져오기
+        from backend.api.dashboard import report_generation_status
+
+        # ISO 포맷으로 변환
+        report_status_serializable = {}
+        for stock_code, status_data in report_generation_status.items():
+            report_status_serializable[stock_code] = {
+                "status": status_data["status"],
+                "started_at": status_data["started_at"].isoformat() if status_data.get("started_at") else None,
+                "completed_at": status_data["completed_at"].isoformat() if status_data.get("completed_at") else None,
+                "stock_name": status_data.get("stock_name"),
+                "model_count": status_data.get("model_count"),
+                "error": status_data.get("error"),
+            }
+
         return {
             "has_active_tasks": len(active_tasks) > 0,
             "active_tasks": active_tasks,
+            "report_status": report_status_serializable,
         }
 
     except Exception as e:

@@ -15,7 +15,6 @@ from backend.db.models.market_data import (
     StockOrderbook,
     StockCurrentPrice,
     InvestorTrading,
-    StockInfo,
     SectorIndex,
 )
 from backend.crawlers.kis_client import get_kis_client
@@ -407,129 +406,6 @@ class InvestorTradingCollector:
 
             logger.info(
                 f"📊 투자자 매매동향 수집 완료: "
-                f"성공 {self.collected_count}건, "
-                f"실패 {self.failed_count}건"
-            )
-
-            return {
-                "collected": self.collected_count,
-                "failed": self.failed_count
-            }
-
-        finally:
-            db.close()
-
-
-class StockInfoCollector:
-    """종목 기본정보 수집기"""
-
-    def __init__(self, batch_size: int = 10):
-        self.batch_size = batch_size
-        self.collected_count = 0
-        self.failed_count = 0
-
-    async def collect_stock_info(self, stock_code: str) -> Dict[str, Any]:
-        """단일 종목의 기본정보 수집"""
-        try:
-            client = await get_kis_client()
-            result = await client.get_stock_info(stock_code=stock_code)
-
-            # output이 list일 수도 있고 dict일 수도 있음
-            output = result.get("output", {})
-
-            # output이 리스트인 경우 첫 번째 항목 사용
-            if isinstance(output, list):
-                if not output:
-                    logger.warning(f"⚠️  {stock_code}: 종목정보 없음 (빈 리스트)")
-                    return {
-                        "stock_code": stock_code,
-                        "status": "skipped",
-                        "error": "Empty list"
-                    }
-                output = output[0]
-
-            if not output:
-                logger.warning(f"⚠️  {stock_code}: 종목정보 없음")
-                return {
-                    "stock_code": stock_code,
-                    "status": "skipped",
-                    "error": "No data"
-                }
-
-            await self._save_to_db(stock_code, output)
-            self.collected_count += 1
-            logger.info(f"✅ {stock_code}: 종목정보 저장 완료")
-
-            return {
-                "stock_code": stock_code,
-                "status": "success"
-            }
-
-        except Exception as e:
-            self.failed_count += 1
-            logger.error(f"❌ {stock_code}: 종목정보 수집 실패 - {e}")
-            return {
-                "stock_code": stock_code,
-                "status": "failed",
-                "error": str(e)
-            }
-
-    async def _save_to_db(self, stock_code: str, data: Dict[str, Any]) -> None:
-        """종목 기본정보를 DB에 저장 (upsert)"""
-        db = SessionLocal()
-        try:
-            # 기존 레코드 확인
-            stock_info = db.query(StockInfo).filter(
-                StockInfo.stock_code == stock_code
-            ).first()
-
-            if stock_info:
-                # 업데이트
-                stock_info.std_idst_clsf_cd = data.get("std_idst_clsf_cd")
-                stock_info.std_idst_clsf_cd_name = data.get("std_idst_clsf_cd_name")
-                stock_info.hts_avls = int(data.get("hts_avls", 0) or 0) if data.get("hts_avls") else None
-                stock_info.lstn_stcn = int(data.get("lstn_stcn", 0) or 0) if data.get("lstn_stcn") else None
-                stock_info.cpfn = int(data.get("cpfn", 0) or 0) if data.get("cpfn") else None
-                stock_info.updated_at = datetime.now()
-            else:
-                # 새로 생성
-                stock_info = StockInfo(
-                    stock_code=stock_code,
-                    std_idst_clsf_cd=data.get("std_idst_clsf_cd"),
-                    std_idst_clsf_cd_name=data.get("std_idst_clsf_cd_name"),
-                    hts_avls=int(data.get("hts_avls", 0) or 0) if data.get("hts_avls") else None,
-                    lstn_stcn=int(data.get("lstn_stcn", 0) or 0) if data.get("lstn_stcn") else None,
-                    cpfn=int(data.get("cpfn", 0) or 0) if data.get("cpfn") else None,
-                )
-                db.add(stock_info)
-
-            db.commit()
-
-        except Exception as e:
-            db.rollback()
-            logger.error(f"DB 저장 실패: {stock_code} - {e}")
-            raise
-        finally:
-            db.close()
-
-    async def collect_all(self, stock_codes: Optional[List[str]] = None) -> Dict[str, Any]:
-        """전체 종목 기본정보 수집"""
-        db = SessionLocal()
-        try:
-            if stock_codes is None:
-                stocks = db.query(Stock).filter(Stock.is_active == True).all()
-                stock_codes = [s.code for s in stocks]
-
-            logger.info(f"🎯 종목정보 수집 시작: {len(stock_codes)}개 종목")
-
-            for i in range(0, len(stock_codes), self.batch_size):
-                batch = stock_codes[i:i + self.batch_size]
-                tasks = [self.collect_stock_info(code) for code in batch]
-                await asyncio.gather(*tasks, return_exceptions=True)
-                await asyncio.sleep(0.5)
-
-            logger.info(
-                f"📊 종목정보 수집 완료: "
                 f"성공 {self.collected_count}건, "
                 f"실패 {self.failed_count}건"
             )

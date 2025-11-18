@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import toast, { Toaster } from 'react-hot-toast';
 import NewsImpact from "../../components/NewsImpact";
 import { DataSourceBadges } from "../../components/DataSourceBadges";
 
@@ -169,6 +170,15 @@ export default function StockDetailPage() {
   const [abConfig, setAbConfig] = useState<{model_a: {name: string}, model_b: {name: string}} | null>(null);
   const [updating, setUpdating] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
+  const [showConfidenceInfo, setShowConfidenceInfo] = useState(false);
+
+  // 리포트 완료 알림 추적 (이미 알림 표시한 종목 코드)
+  // localStorage에서 이전 알림 기록 불러오기 (새로고침 시에도 유지)
+  const notifiedReports = useRef<Set<string>>(
+    typeof window !== 'undefined'
+      ? new Set(JSON.parse(localStorage.getItem('notifiedReports') || '[]'))
+      : new Set()
+  );
 
   // 단일 모델 리포트 렌더링 함수
   const renderModelSummary = (
@@ -201,10 +211,34 @@ export default function StockDetailPage() {
           {/* 신뢰도 배지 */}
           {model.confidence_level && (
             <div className="mt-3">
-              <span className="text-sm font-medium text-gray-700 mr-2">분석 신뢰도:</span>
-              <span className={`px-3 py-1 rounded-full text-xs font-medium border ${confidenceColorScheme[model.confidence_level]}`}>
-                {confidenceLabel[model.confidence_level]}
-              </span>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-sm font-medium text-gray-700">분석 신뢰도:</span>
+                <span className={`px-3 py-1 rounded-full text-xs font-medium border ${confidenceColorScheme[model.confidence_level]}`}>
+                  {confidenceLabel[model.confidence_level]}
+                </span>
+                <button
+                  onClick={() => setShowConfidenceInfo(!showConfidenceInfo)}
+                  className="text-gray-500 hover:text-gray-700 transition-colors"
+                  title="신뢰도 기준 보기"
+                >
+                  <span className="text-sm font-bold">ⓘ</span>
+                </button>
+              </div>
+
+              {/* 신뢰도 기준 설명 (토글) */}
+              {showConfidenceInfo && (
+                <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-gray-700">
+                  <p className="font-semibold mb-2">📊 신뢰도 평가 기준</p>
+                  <ul className="space-y-1 ml-4">
+                    <li>• <strong className="text-green-700">높음 🟢</strong>: 6가지 데이터 소스가 모두 충분히 확보됨</li>
+                    <li>• <strong className="text-yellow-700">중간 🟡</strong>: 일부 데이터 소스가 부족하지만 핵심 정보는 확보됨</li>
+                    <li>• <strong className="text-red-700">낮음 🔴</strong>: 필수 데이터가 많이 부족하여 분석의 한계가 있음</li>
+                  </ul>
+                  <p className="mt-2 text-xs text-gray-600">
+                    * 6가지 데이터 소스: 시장 데이터, 투자자별 거래, 재무비율, 상품정보, 기술적 지표, 뉴스
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -358,6 +392,63 @@ export default function StockDetailPage() {
       });
   }, []);
 
+  // 리포트 생성 상태 폴링 (5초마다)
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/ab-test/prediction-status');
+        const data = await res.json();
+
+        const reportStatus = data.report_status || {};
+
+        // 완료된 리포트 확인
+        Object.entries(reportStatus).forEach(([code, info]: [string, any]) => {
+          if (info.status === 'completed' && !notifiedReports.current.has(code)) {
+            // 아직 알림 표시하지 않은 완료된 리포트
+
+            if (code === stockCode) {
+              // 현재 페이지 종목 - 데이터 리페치 + 화면 메시지
+              fetchStockData();
+              setUpdateMessage({
+                type: 'success',
+                text: `리포트가 생성되었습니다! (${info.model_count}개 모델)`
+              });
+
+              // 5초 후 메시지 제거
+              setTimeout(() => {
+                setUpdateMessage(null);
+              }, 5000);
+
+              toast.success(`${info.stock_name} 리포트 생성 완료!`, {
+                duration: 4000,
+                position: 'top-right',
+              });
+            } else {
+              // 다른 종목 - toast 알림만
+              toast.success(`${info.stock_name} 리포트가 생성되었습니다`, {
+                duration: 4000,
+                position: 'top-right',
+              });
+            }
+
+            // 알림 표시 완료 기록 (localStorage에도 저장)
+            notifiedReports.current.add(code);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(
+                'notifiedReports',
+                JSON.stringify(Array.from(notifiedReports.current))
+              );
+            }
+          }
+        });
+      } catch (error) {
+        console.error("Failed to fetch report status:", error);
+      }
+    }, 5000); // 5초마다 폴링
+
+    return () => clearInterval(interval);
+  }, [stockCode]);
+
   useEffect(() => {
     if (!stockCode) return;
 
@@ -379,7 +470,22 @@ export default function StockDetailPage() {
       });
   }, [stockCode]);
 
-  // 리포트 강제 업데이트 핸들러
+  // 종목 데이터 리페치 함수
+  const fetchStockData = async () => {
+    if (!stockCode) return;
+
+    try {
+      const response = await fetch(`/api/stocks/${stockCode}`);
+      if (response.ok) {
+        const data = await response.json();
+        setStock(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch stock data:", error);
+    }
+  };
+
+  // 리포트 강제 업데이트 핸들러 (비동기 - 즉시 리턴)
   const handleForceUpdate = async () => {
     if (!stockCode) return;
 
@@ -389,41 +495,26 @@ export default function StockDetailPage() {
     try {
       const response = await fetch(`/api/reports/force-update/${stockCode}`, {
         method: "POST",
-        signal: AbortSignal.timeout(120000), // 2분 타임아웃
-        // Next.js의 기본 캐시를 비활성화하여 항상 새 요청
         cache: 'no-store',
       });
 
       const result = await response.json();
 
-      if (result.success) {
-        // 백엔드에서 생성된 리포트 데이터를 직접 받아서 적용
-        if (result.analysis_summary && stock) {
-          setStock({
-            ...stock,
-            analysis_summary: result.analysis_summary
-          });
+      if (result.success && result.status === 'processing') {
+        // 백그라운드 작업 시작 성공
+        setUpdateMessage({
+          type: 'success',
+          text: `${result.stock_name || '종목'} 리포트 생성 중... 완료되면 자동으로 알림을 표시합니다.`
+        });
 
-          setUpdateMessage({
-            type: 'success',
-            text: '리포트가 성공적으로 업데이트되었습니다.'
-          });
-        } else {
-          // analysis_summary가 없으면 페이지 전체 새로고침
-          const stockResponse = await fetch(`/api/stocks/${stockCode}`);
-          if (stockResponse.ok) {
-            const stockData = await stockResponse.json();
-            setStock(stockData);
-            setUpdateMessage({
-              type: 'success',
-              text: '리포트가 성공적으로 업데이트되었습니다.'
-            });
-          }
-        }
+        // 5초 후 메시지 제거
+        setTimeout(() => {
+          setUpdateMessage(null);
+        }, 5000);
       } else {
         setUpdateMessage({
           type: 'error',
-          text: result.message
+          text: result.message || '리포트 업데이트 요청 실패'
         });
       }
     } catch (error) {
@@ -434,11 +525,6 @@ export default function StockDetailPage() {
       });
     } finally {
       setUpdating(false);
-
-      // 5초 후 메시지 자동 제거
-      setTimeout(() => {
-        setUpdateMessage(null);
-      }, 5000);
     }
   };
 
@@ -465,6 +551,16 @@ export default function StockDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Toast 알림 컴포넌트 */}
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: {
+            zIndex: 9999,
+          },
+        }}
+      />
+
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-6">
@@ -592,18 +688,42 @@ export default function StockDetailPage() {
             {/* 신뢰도 배지 */}
             {stock.analysis_summary.confidence_level && (
               <div className="mb-6">
-                <span className="text-base font-medium text-gray-700 mr-2">분석 신뢰도:</span>
-                <span className={`px-4 py-2 rounded-full text-sm font-medium border ${
-                  stock.analysis_summary.confidence_level === 'high'
-                    ? 'bg-green-100 text-green-700 border-green-300'
-                    : stock.analysis_summary.confidence_level === 'medium'
-                    ? 'bg-yellow-100 text-yellow-700 border-yellow-300'
-                    : 'bg-red-100 text-red-700 border-red-300'
-                }`}>
-                  {stock.analysis_summary.confidence_level === 'high' && '높음 🟢'}
-                  {stock.analysis_summary.confidence_level === 'medium' && '중간 🟡'}
-                  {stock.analysis_summary.confidence_level === 'low' && '낮음 🔴'}
-                </span>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-base font-medium text-gray-700">분석 신뢰도:</span>
+                  <span className={`px-4 py-2 rounded-full text-sm font-medium border ${
+                    stock.analysis_summary.confidence_level === 'high'
+                      ? 'bg-green-100 text-green-700 border-green-300'
+                      : stock.analysis_summary.confidence_level === 'medium'
+                      ? 'bg-yellow-100 text-yellow-700 border-yellow-300'
+                      : 'bg-red-100 text-red-700 border-red-300'
+                  }`}>
+                    {stock.analysis_summary.confidence_level === 'high' && '높음 🟢'}
+                    {stock.analysis_summary.confidence_level === 'medium' && '중간 🟡'}
+                    {stock.analysis_summary.confidence_level === 'low' && '낮음 🔴'}
+                  </span>
+                  <button
+                    onClick={() => setShowConfidenceInfo(!showConfidenceInfo)}
+                    className="text-gray-500 hover:text-gray-700 transition-colors"
+                    title="신뢰도 기준 보기"
+                  >
+                    <span className="text-base font-bold">ⓘ</span>
+                  </button>
+                </div>
+
+                {/* 신뢰도 기준 설명 (토글) */}
+                {showConfidenceInfo && (
+                  <div className="mt-2 p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-gray-700">
+                    <p className="font-semibold mb-2">📊 신뢰도 평가 기준</p>
+                    <ul className="space-y-1 ml-4">
+                      <li>• <strong className="text-green-700">높음 🟢</strong>: 6가지 데이터 소스가 모두 충분히 확보됨</li>
+                      <li>• <strong className="text-yellow-700">중간 🟡</strong>: 일부 데이터 소스가 부족하지만 핵심 정보는 확보됨</li>
+                      <li>• <strong className="text-red-700">낮음 🔴</strong>: 필수 데이터가 많이 부족하여 분석의 한계가 있음</li>
+                    </ul>
+                    <p className="mt-3 text-xs text-gray-600">
+                      * 6가지 데이터 소스: 시장 데이터, 투자자별 거래, 재무비율, 상품정보, 기술적 지표, 뉴스
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 

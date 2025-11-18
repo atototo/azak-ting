@@ -201,41 +201,6 @@ class InvestorTrading(Base):
         )
 
 
-class StockInfo(Base):
-    """
-    종목 기본정보 (업종, 시가총액, 상장주식수, 자본금).
-
-    Attributes:
-        id: Primary key
-        stock_code: 종목 코드
-        std_idst_clsf_cd: 표준산업분류코드
-        std_idst_clsf_cd_name: 업종명
-        hts_avls: 시가총액
-        lstn_stcn: 상장주식수
-        cpfn: 자본금
-        updated_at: 수정일시
-    """
-
-    __tablename__ = "stock_info"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    stock_code = Column(String(10), unique=True, nullable=False, index=True)
-
-    std_idst_clsf_cd = Column(String(10), nullable=True)  # 표준산업분류코드
-    std_idst_clsf_cd_name = Column(String(100), nullable=True)  # 업종명
-    hts_avls = Column(BigInteger, nullable=True)  # 시가총액
-    lstn_stcn = Column(BigInteger, nullable=True)  # 상장주식수
-    cpfn = Column(BigInteger, nullable=True)  # 자본금
-
-    updated_at = Column(DateTime, default=lambda: datetime.now(), onupdate=lambda: datetime.now(), nullable=False)
-
-    def __repr__(self) -> str:
-        return (
-            f"<StockInfo(stock_code='{self.stock_code}', "
-            f"sector='{self.std_idst_clsf_cd_name}', market_cap={self.hts_avls})>"
-        )
-
-
 class SectorIndex(Base):
     """
     업종 지수 데이터.

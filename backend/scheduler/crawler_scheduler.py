@@ -23,7 +23,6 @@ from backend.crawlers.kis_market_data_collector import (
     OrderbookCollector,
     CurrentPriceCollector,
     InvestorTradingCollector,
-    StockInfoCollector,
     SectorIndexCollector,
 )
 from backend.crawlers.news_stock_matcher import run_daily_matching
@@ -647,26 +646,6 @@ class CrawlerScheduler:
         except Exception as e:
             logger.error(f"❌ 투자자별 매매동향 수집 중 에러: {e}")
 
-    async def _collect_stock_info(self) -> None:
-        """
-        종목 기본정보 수집.
-        매일 장 마감 후(16:10)에 실행됩니다.
-        """
-        logger.info("=" * 60)
-        logger.info("ℹ️  종목 기본정보 수집 시작")
-        logger.info("=" * 60)
-
-        try:
-            collector = StockInfoCollector(batch_size=10)
-            await collector.collect_all()
-
-            logger.info("=" * 60)
-            logger.info("✅ 종목 기본정보 수집 완료")
-            logger.info("=" * 60)
-
-        except Exception as e:
-            logger.error(f"❌ 종목 기본정보 수집 중 에러: {e}")
-
     async def _collect_overtime_prices(self) -> None:
         """
         시간외 거래 가격 수집.
@@ -1013,16 +992,6 @@ class CrawlerScheduler:
             trigger=investor_trading_trigger,
             id="investor_trading_job",
             name="투자자별 매매동향 수집",
-            replace_existing=True,
-        )
-
-        # 종목 기본정보 수집 (매일 16:10 - 장 마감 후)
-        stock_info_trigger = CronTrigger(hour=16, minute=10)
-        self.scheduler.add_job(
-            func=lambda: asyncio.run(self._collect_stock_info()),
-            trigger=stock_info_trigger,
-            id="stock_info_job",
-            name="종목 기본정보 수집",
             replace_existing=True,
         )
 

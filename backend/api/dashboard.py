@@ -7,14 +7,14 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, BackgroundTasks
 from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 
 from backend.db.session import SessionLocal
 from backend.db.models.news import NewsArticle
 from backend.db.models.stock import Stock, StockPrice
-from backend.db.models.market_data import StockCurrentPrice, InvestorTrading, StockInfo
+from backend.db.models.market_data import StockCurrentPrice, InvestorTrading
 from backend.db.models.prediction import Prediction
 from backend.scheduler.crawler_scheduler import get_crawler_scheduler
 
@@ -22,6 +22,10 @@ from backend.scheduler.crawler_scheduler import get_crawler_scheduler
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
+
+# 리포트 생성 상태 추적 (인메모리)
+# {stock_code: {"status": "processing"|"completed"|"failed", "started_at": datetime, "completed_at": datetime, "stock_name": str, "error": str}}
+report_generation_status: Dict[str, Dict[str, Any]] = {}
 
 
 def get_db():
@@ -168,24 +172,13 @@ async def get_system_status():
         raise
 
 
-@router.post("/reports/force-update/{stock_code}")
-async def force_update_single_stock(
-    stock_code: str,
-    db: Session = Depends(get_db)
-):
-    """
-    특정 종목 리포트 강제 업데이트
-
-    Args:
-        stock_code: 종목 코드
-
-    Returns:
-        업데이트 결과 (성공 여부, 메시지)
-    """
+async def _generate_report_background(stock_code: str, stock_name: str):
+    """백그라운드 리포트 생성 태스크"""
+    db = SessionLocal()
     try:
         from backend.services.stock_analysis_service import generate_stock_report
 
-        logger.info(f"종목 {stock_code} 리포트 강제 업데이트 시작")
+        logger.info(f"🔄 [{stock_code}] {stock_name} 리포트 백그라운드 생성 시작")
 
         reports = await generate_stock_report(
             stock_code,
@@ -194,28 +187,95 @@ async def force_update_single_stock(
         )
 
         if reports:
-            logger.info(f"✅ 종목 {stock_code} 리포트 업데이트 성공 ({len(reports)}개 모델)")
-
-            # 생성된 리포트 데이터를 직접 반환
-            from backend.services.stock_analysis_service import get_stock_analysis_summary
-            updated_summary = get_stock_analysis_summary(stock_code, db)
-
-            return {
-                "success": True,
-                "message": f"종목 {stock_code} 리포트가 성공적으로 업데이트되었습니다. ({len(reports)}개 모델)",
-                "last_updated": reports[0].last_updated.isoformat() if reports[0].last_updated else None,
+            logger.info(f"✅ [{stock_code}] {stock_name} 리포트 생성 완료 ({len(reports)}개 모델)")
+            report_generation_status[stock_code] = {
+                "status": "completed",
+                "started_at": report_generation_status[stock_code]["started_at"],
+                "completed_at": datetime.utcnow(),
+                "stock_name": stock_name,
                 "model_count": len(reports),
-                "analysis_summary": updated_summary  # 생성된 리포트 데이터 포함
             }
         else:
-            logger.warning(f"❌ 종목 {stock_code} 리포트 업데이트 실패")
-            return {
-                "success": False,
-                "message": f"종목 {stock_code} 리포트 생성 실패 (예측 부족 또는 LLM 오류)"
+            logger.warning(f"❌ [{stock_code}] {stock_name} 리포트 생성 실패")
+            report_generation_status[stock_code] = {
+                "status": "failed",
+                "started_at": report_generation_status[stock_code]["started_at"],
+                "completed_at": datetime.utcnow(),
+                "stock_name": stock_name,
+                "error": "예측 부족 또는 LLM 오류",
             }
 
     except Exception as e:
-        logger.error(f"종목 {stock_code} 리포트 업데이트 오류: {e}", exc_info=True)
+        logger.error(f"❌ [{stock_code}] {stock_name} 리포트 생성 오류: {e}", exc_info=True)
+        report_generation_status[stock_code] = {
+            "status": "failed",
+            "started_at": report_generation_status[stock_code].get("started_at", datetime.utcnow()),
+            "completed_at": datetime.utcnow(),
+            "stock_name": stock_name,
+            "error": str(e),
+        }
+    finally:
+        db.close()
+
+
+@router.post("/reports/force-update/{stock_code}")
+async def force_update_single_stock(
+    stock_code: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    특정 종목 리포트 강제 업데이트 (비동기)
+
+    즉시 리턴하고 백그라운드에서 리포트 생성
+    /api/ab-test/prediction-status 에서 진행 상태 확인 가능
+
+    Args:
+        stock_code: 종목 코드
+
+    Returns:
+        리포트 생성 시작 확인
+    """
+    try:
+        from backend.utils.stock_mapping import get_stock_mapper
+
+        stock_mapper = get_stock_mapper()
+        stock_name = stock_mapper.get_company_name(stock_code) or stock_code
+
+        logger.info(f"📝 [{stock_code}] {stock_name} 리포트 업데이트 요청")
+
+        # 이미 처리 중이면 거부
+        if stock_code in report_generation_status:
+            current_status = report_generation_status[stock_code]
+            if current_status["status"] == "processing":
+                return {
+                    "success": False,
+                    "message": f"{stock_name} 리포트가 이미 생성 중입니다",
+                    "status": "processing",
+                }
+
+        # 상태 초기화
+        report_generation_status[stock_code] = {
+            "status": "processing",
+            "started_at": datetime.utcnow(),
+            "stock_name": stock_name,
+        }
+
+        # 백그라운드 작업 추가
+        background_tasks.add_task(_generate_report_background, stock_code, stock_name)
+
+        logger.info(f"✅ [{stock_code}] {stock_name} 리포트 생성 작업 시작")
+
+        return {
+            "success": True,
+            "message": f"{stock_name} 리포트 생성을 시작했습니다",
+            "status": "processing",
+            "stock_code": stock_code,
+            "stock_name": stock_name,
+        }
+
+    except Exception as e:
+        logger.error(f"리포트 업데이트 요청 실패 ({stock_code}): {e}", exc_info=True)
         return {
             "success": False,
             "message": f"오류 발생: {str(e)}"
