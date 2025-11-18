@@ -94,7 +94,7 @@ wheels = [
 ]
 
 [[package]]
-name = "craveny"
+name = "azak"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [

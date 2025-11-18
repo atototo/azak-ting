@@ -78,7 +78,7 @@ uv run python -c "from backend.db.migrations.add_product_info_table import downg
 
 ```bash
 # 백업 파일 압축 해제
-gunzip data/backups/craveny_backup_YYYYMMDD_HHMMSS.sql.gz
+gunzip data/backups/azak_backup_YYYYMMDD_HHMMSS.sql.gz
 
 # DB 복원
 PGPASSWORD=$POSTGRES_PASSWORD psql \
@@ -86,7 +86,7 @@ PGPASSWORD=$POSTGRES_PASSWORD psql \
     -p ${POSTGRES_PORT:-5432} \
     -U $POSTGRES_USER \
     -d $POSTGRES_DB \
-    -f data/backups/craveny_backup_YYYYMMDD_HHMMSS.sql
+    -f data/backups/azak_backup_YYYYMMDD_HHMMSS.sql
 ```
 
 ### 롤백 후 확인사항

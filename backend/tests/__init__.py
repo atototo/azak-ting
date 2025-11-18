@@ -1,3 +1,3 @@
 """
-Tests for craveny backend
+Tests for azak backend
 """

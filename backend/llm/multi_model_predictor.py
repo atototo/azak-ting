@@ -67,8 +67,8 @@ class MultiModelPredictor:
                 api_key=settings.OPENROUTER_API_KEY,
                 base_url="https://openrouter.ai/api/v1",
                 default_headers={
-                    "HTTP-Referer": "https://craveny.ai",
-                    "X-Title": "Craveny Multi-Model Predictor",
+                    "HTTP-Referer": "https://azak.ai",
+                    "X-Title": "Azak Multi-Model Predictor",
                 }
             )
         else:  # openai

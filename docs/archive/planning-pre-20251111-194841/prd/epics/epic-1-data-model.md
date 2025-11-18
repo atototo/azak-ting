@@ -131,7 +131,7 @@ Prediction 모델의 스키마를 변경하여 가격 예측 필드를 제거하
 1. DB 백업
    ```bash
    # PostgreSQL 백업
-   pg_dump -h localhost -U user -d craveny > backup_before_migration.sql
+   pg_dump -h localhost -U user -d azak > backup_before_migration.sql
    ```
 
 2. 스테이징 환경 마이그레이션

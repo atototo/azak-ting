@@ -158,7 +158,7 @@ logger.info(
 **로그 집계 스크립트** (선택):
 ```bash
 # scripts/analyze_llm_costs.sh
-grep "LLM_COST" /var/log/craveny/backend.log | \
+grep "LLM_COST" /var/log/azak/backend.log | \
   awk '{print $3}' | \
   sort | uniq -c
 ```
@@ -191,12 +191,12 @@ grep "LLM_COST" /var/log/craveny/backend.log | \
 **로그 확인**:
 ```bash
 # 업데이트 사유 통계
-grep "업데이트 시작" /var/log/craveny/backend.log | \
+grep "업데이트 시작" /var/log/azak/backend.log | \
   grep -oP '사유=\K[^,]+' | \
   sort | uniq -c | sort -rn
 
 # 시장 단계별 업데이트 횟수
-grep "LLM_COST" /var/log/craveny/backend.log | \
+grep "LLM_COST" /var/log/azak/backend.log | \
   grep -oP '시장단계=\K[^,]+' | \
   sort | uniq -c
 ```

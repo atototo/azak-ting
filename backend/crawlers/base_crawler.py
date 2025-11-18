@@ -104,7 +104,7 @@ class BaseNewsCrawler(ABC):
         # User-Agent 설정
         session.headers.update(
             {
-                "User-Agent": "Mozilla/5.0 (Compatible; Craveny/1.0)",
+                "User-Agent": "Mozilla/5.0 (Compatible; Azak/1.0)",
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
             }

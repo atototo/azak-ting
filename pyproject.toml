@@ -90,7 +90,7 @@ requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "craveny"
+name = "azak"
 version = "1.0.0"
 description = "증권 뉴스 예측 및 텔레그램 알림 시스템"
 requires-python = ">=3.11"
@@ -102,7 +102,7 @@ dependencies = [
 ]
 
 [project.scripts]
-craveny = "backend.main:main"
+azak = "backend.main:main"
 dev = "backend.main:main"
 
 [dependency-groups]

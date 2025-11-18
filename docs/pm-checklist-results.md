@@ -1,6 +1,6 @@
 # PM Checklist 검증 결과 보고서
 
-**프로젝트:** Craveny - 뉴스 기반 주가 예측 시스템
+**프로젝트:** Azak - 뉴스 기반 주가 예측 시스템
 **PRD 버전:** 1.0
 **검증 일자:** 2025-10-27
 **검증자:** John (Product Manager)
@@ -309,7 +309,7 @@ Epic 및 Story 구조가 매우 우수함.
    - 활발한 트레이더: 3명
 
    ### 피드백 채널
-   - 텔레그램 그룹: Craveny Beta Testers
+   - 텔레그램 그룹: Azak Beta Testers
    - 주간 설문: Google Forms
    ```
 

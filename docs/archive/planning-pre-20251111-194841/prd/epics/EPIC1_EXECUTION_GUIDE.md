@@ -11,7 +11,7 @@
 ### Story 1.1: Prediction Model Schema Update ✅
 
 **Files Modified**:
-- `/Users/winter.e/easy-work/craveny/backend/db/models/prediction.py`
+- `/Users/winter.e/easy-work/azak/backend/db/models/prediction.py`
 
 **Changes**:
 1. Added new impact analysis fields:
@@ -37,9 +37,9 @@
 ### Story 1.2: Migration Script Creation ✅
 
 **Files Created**:
-- `/Users/winter.e/easy-work/craveny/backend/db/migrations/add_impact_analysis_fields.py`
-- `/Users/winter.e/easy-work/craveny/scripts/verify_migration.sql`
-- `/Users/winter.e/easy-work/craveny/scripts/rollback_migration.sql`
+- `/Users/winter.e/easy-work/azak/backend/db/migrations/add_impact_analysis_fields.py`
+- `/Users/winter.e/easy-work/azak/scripts/verify_migration.sql`
+- `/Users/winter.e/easy-work/azak/scripts/rollback_migration.sql`
 
 **Migration Logic**:
 1. Add new columns (all nullable)
@@ -75,7 +75,7 @@
 ### Story 1.4: Verification Script Creation ✅
 
 **Files Created**:
-- `/Users/winter.e/easy-work/craveny/scripts/verify_prediction_data.py`
+- `/Users/winter.e/easy-work/azak/scripts/verify_prediction_data.py`
 
 **Verification Checks**:
 1. Record count verification
@@ -102,7 +102,7 @@
 1. **Database Backup**:
    ```bash
    # PostgreSQL backup
-   pg_dump -h <host> -U <user> -d craveny > backup_$(date +%Y%m%d_%H%M%S).sql
+   pg_dump -h <host> -U <user> -d azak > backup_$(date +%Y%m%d_%H%M%S).sql
 
    # Verify backup file
    ls -lh backup_*.sql
@@ -126,17 +126,17 @@
 
 ```bash
 # Navigate to project directory
-cd /Users/winter.e/easy-work/craveny
+cd /Users/winter.e/easy-work/azak
 
 # Activate virtual environment (if using uv)
 source .venv/bin/activate
 
 # Verify current database state
-psql -h <host> -U <user> -d craveny -c "SELECT COUNT(*) FROM predictions;"
+psql -h <host> -U <user> -d azak -c "SELECT COUNT(*) FROM predictions;"
 # Expected: 1164 records
 
 # Check current schema
-psql -h <host> -U <user> -d craveny -c "\d predictions"
+psql -h <host> -U <user> -d azak -c "\d predictions"
 ```
 
 #### Step 2: Run Migration (Staging First)
@@ -199,7 +199,7 @@ python scripts/verify_prediction_data.py
 
 ```bash
 # Run manual verification queries
-psql -h <host> -U <user> -d craveny -f scripts/verify_migration.sql
+psql -h <host> -U <user> -d azak -f scripts/verify_migration.sql
 
 # Review output for:
 # - Correct record counts
@@ -211,7 +211,7 @@ psql -h <host> -U <user> -d craveny -f scripts/verify_migration.sql
 
 1. **Final Backup**:
    ```bash
-   pg_dump -h <prod_host> -U <prod_user> -d craveny > backup_prod_$(date +%Y%m%d_%H%M%S).sql
+   pg_dump -h <prod_host> -U <prod_user> -d azak > backup_prod_$(date +%Y%m%d_%H%M%S).sql
    ```
 
 2. **Run Migration**:
@@ -239,19 +239,19 @@ python backend/db/migrations/add_impact_analysis_fields.py downgrade
 
 **Option 2: Using SQL Script**:
 ```bash
-psql -h <host> -U <user> -d craveny -f scripts/rollback_migration.sql
+psql -h <host> -U <user> -d azak -f scripts/rollback_migration.sql
 ```
 
 **Option 3: Restore from Backup**:
 ```bash
 # Drop current database (CAREFUL!)
-dropdb -h <host> -U <user> craveny
+dropdb -h <host> -U <user> azak
 
 # Create new database
-createdb -h <host> -U <user> craveny
+createdb -h <host> -U <user> azak
 
 # Restore from backup
-psql -h <host> -U <user> -d craveny < backup_YYYYMMDD_HHMMSS.sql
+psql -h <host> -U <user> -d azak < backup_YYYYMMDD_HHMMSS.sql
 ```
 
 ---

@@ -32,10 +32,10 @@ volumes:
 
 ```bash
 # 1. Redis 스냅샷 생성
-docker exec craveny-redis redis-cli SAVE
+docker exec azak-redis redis-cli SAVE
 
 # 2. 덤프 파일 복사
-docker cp craveny-redis:/data/dump.rdb ./infrastructure/redis-init/dump.rdb
+docker cp azak-redis:/data/dump.rdb ./infrastructure/redis-init/dump.rdb
 ```
 
 ## 캐시 초기화
@@ -43,5 +43,5 @@ docker cp craveny-redis:/data/dump.rdb ./infrastructure/redis-init/dump.rdb
 새로 시작시 캐시를 비우고 싶다면:
 
 ```bash
-docker exec craveny-redis redis-cli FLUSHALL
+docker exec azak-redis redis-cli FLUSHALL
 ```

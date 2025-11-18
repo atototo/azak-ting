@@ -4,7 +4,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 import LayoutWrapper from "./components/LayoutWrapper";
 
 export const metadata: Metadata = {
-  title: "Craveny Dashboard",
+  title: "Azak Dashboard",
   description: "주가 예측 대시보드",
 };
 

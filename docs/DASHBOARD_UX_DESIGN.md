@@ -1,4 +1,4 @@
-# 📊 Craveny Dashboard UX 설계 문서
+# 📊 Azak Dashboard UX 설계 문서
 
 ## 1. 개요
 
@@ -401,7 +401,7 @@ GET /api/statistics/crawler
 ## 4. 공통 UI 컴포넌트
 
 ### 4.1 Header
-- 로고 (Craveny)
+- 로고 (Azak)
 - 네비게이션 메뉴
   - 대시보드
   - 예측 히스토리

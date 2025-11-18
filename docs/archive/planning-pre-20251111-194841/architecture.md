@@ -1,4 +1,4 @@
-# Craveny Fullstack Architecture Document
+# Azak Fullstack Architecture Document
 
 **버전:** 2.0
 **날짜:** 2025-11-02
@@ -30,7 +30,7 @@
 
 ### 1.1 개요
 
-이 문서는 **Craveny**의 전체 풀스택 아키텍처를 정의합니다. 백엔드 시스템, 프론트엔드 구현(텔레그램 봇 인터페이스), 그리고 이들의 통합 방식을 포함합니다. AI 기반 개발의 단일 진실 공급원(Single Source of Truth)으로 기능하며, 전체 기술 스택의 일관성을 보장합니다.
+이 문서는 **Azak**의 전체 풀스택 아키텍처를 정의합니다. 백엔드 시스템, 프론트엔드 구현(텔레그램 봇 인터페이스), 그리고 이들의 통합 방식을 포함합니다. AI 기반 개발의 단일 진실 공급원(Single Source of Truth)으로 기능하며, 전체 기술 스택의 일관성을 보장합니다.
 
 이 통합 접근 방식은 백엔드 데이터 처리, LLM 기반 예측, 텔레그램 알림 전송이 긴밀하게 통합된 현대적 풀스택 애플리케이션의 개발 프로세스를 간소화합니다.
 
@@ -62,7 +62,7 @@
 
 ### 2.1 기술 요약
 
-Craveny는 **Full-Stack Monolith 아키텍처**로 구성됩니다. Next.js 웹 대시보드, FastAPI 백엔드, 텔레그램 봇이 통합된 시스템에서 뉴스/주가 데이터 수집, LLM 기반 예측, 다채널 알림 전송을 처리합니다.
+Azak는 **Full-Stack Monolith 아키텍처**로 구성됩니다. Next.js 웹 대시보드, FastAPI 백엔드, 텔레그램 봇이 통합된 시스템에서 뉴스/주가 데이터 수집, LLM 기반 예측, 다채널 알림 전송을 처리합니다.
 
 **핵심 구성:**
 - **프론트엔드:** Next.js 15 (App Router) - 사용자/관리자 대시보드, 종목 분석 페이지
@@ -671,7 +671,7 @@ erDiagram
 
 ## 5. API 명세
 
-Craveny는 **Next.js 웹 대시보드와 텔레그램 봇 이중 인터페이스**를 제공합니다. REST API는 사용자 대시보드, 관리자 모니터링, 종목 분석 조회를 지원합니다.
+Azak는 **Next.js 웹 대시보드와 텔레그램 봇 이중 인터페이스**를 제공합니다. REST API는 사용자 대시보드, 관리자 모니터링, 종목 분석 조회를 지원합니다.
 
 ### 5.1 REST API Specification (OpenAPI 3.0)
 
@@ -1241,7 +1241,7 @@ collection.create_index(field_name="embedding", index_params=index_params)
 ## 8. 통합 프로젝트 구조
 
 ```plaintext
-craveny/
+azak/
 ├── .github/workflows/          # CI/CD
 │   ├── ci.yml
 │   └── deploy.yml
@@ -1388,8 +1388,8 @@ mypy backend/ --ignore-missing-imports
 
 ```bash
 # 1. 레포지토리 클론
-git clone https://github.com/your-org/craveny.git
-cd craveny
+git clone https://github.com/your-org/azak.git
+cd azak
 
 # 2. Python 가상환경 (Backend)
 python3.11 -m venv venv

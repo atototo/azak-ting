@@ -1,7 +1,7 @@
 # User Story: DB 스키마 마이그레이션
 
 **Story ID**: US-001
-**Epic**: [CRAVENY-EPIC-001](../../stock-analysis-redesign-epic.md)
+**Epic**: [AZAK-EPIC-001](../../stock-analysis-redesign-epic.md)
 **제목**: 재무비율 및 상품정보 테이블 추가, Priority 시스템 Deprecated
 **우선순위**: P0 (필수)
 **스토리 포인트**: 5

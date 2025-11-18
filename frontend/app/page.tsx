@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Cookie } from "lucide-react";
 
 interface Mover {
   stock_code: string;
@@ -85,21 +86,24 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen">
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Hero Section */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
-            📈 시장 현황 대시보드
-          </h1>
-          <p className="text-gray-600">실시간 주식 시장 동향을 한눈에 확인하세요</p>
+          <div className="flex items-center gap-3 mb-2">
+            <Cookie className="w-8 h-8 text-amber-600" />
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-amber-600 to-orange-600 bg-clip-text text-transparent">
+              시장 현황 대시보드
+            </h1>
+          </div>
+          <p className="text-gray-700">실시간 주식 시장 동향을 한눈에 확인하세요</p>
         </div>
 
         {/* 급등/급락 종목 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           {/* 급등 종목 */}
-          <div className="bg-white rounded-lg shadow">
-            <div className="px-6 py-4 border-b border-gray-200">
+          <div className="bg-white rounded-lg shadow border border-amber-100">
+            <div className="px-6 py-4 border-b border-amber-100">
               <h2 className="text-xl font-bold text-gray-900">🚀 급등 종목 TOP 5</h2>
               <p className="text-sm text-gray-500 mt-1">실시간 전체 시장 기준</p>
             </div>
@@ -113,7 +117,7 @@ export default function Home() {
                   <Link
                     key={stock.stock_code}
                     href={`/stocks/${stock.stock_code}`}
-                    className="block px-6 py-3 hover:bg-gray-50 transition"
+                    className="block px-6 py-3 hover:bg-amber-50 transition"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3 flex-1">
@@ -138,8 +142,8 @@ export default function Home() {
           </div>
 
           {/* 급락 종목 */}
-          <div className="bg-white rounded-lg shadow">
-            <div className="px-6 py-4 border-b border-gray-200">
+          <div className="bg-white rounded-lg shadow border border-amber-100">
+            <div className="px-6 py-4 border-b border-amber-100">
               <h2 className="text-xl font-bold text-gray-900">📉 급락 종목 TOP 5</h2>
               <p className="text-sm text-gray-500 mt-1">실시간 전체 시장 기준</p>
             </div>
@@ -153,7 +157,7 @@ export default function Home() {
                   <Link
                     key={stock.stock_code}
                     href={`/stocks/${stock.stock_code}`}
-                    className="block px-6 py-3 hover:bg-gray-50 transition"
+                    className="block px-6 py-3 hover:bg-amber-50 transition"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3 flex-1">
@@ -181,8 +185,8 @@ export default function Home() {
         {/* 투자자 동향 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           {/* 외국인 순매수 */}
-          <div className="bg-white rounded-lg shadow">
-            <div className="px-6 py-4 border-b border-gray-200">
+          <div className="bg-white rounded-lg shadow border border-amber-100">
+            <div className="px-6 py-4 border-b border-amber-100">
               <h2 className="text-xl font-bold text-gray-900">🌐 외국인 순매수 TOP</h2>
               <p className="text-sm text-gray-500 mt-1">오늘 외국인이 가장 많이 산 종목</p>
             </div>
@@ -196,7 +200,7 @@ export default function Home() {
                   <Link
                     key={stock.stock_code}
                     href={`/stocks/${stock.stock_code}`}
-                    className="block px-6 py-3 hover:bg-gray-50 transition"
+                    className="block px-6 py-3 hover:bg-amber-50 transition"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
@@ -214,8 +218,8 @@ export default function Home() {
           </div>
 
           {/* 기관 순매수 */}
-          <div className="bg-white rounded-lg shadow">
-            <div className="px-6 py-4 border-b border-gray-200">
+          <div className="bg-white rounded-lg shadow border border-amber-100">
+            <div className="px-6 py-4 border-b border-amber-100">
               <h2 className="text-xl font-bold text-gray-900">🏢 기관 순매수 TOP</h2>
               <p className="text-sm text-gray-500 mt-1">오늘 기관이 가장 많이 산 종목</p>
             </div>
@@ -229,7 +233,7 @@ export default function Home() {
                   <Link
                     key={stock.stock_code}
                     href={`/stocks/${stock.stock_code}`}
-                    className="block px-6 py-3 hover:bg-gray-50 transition"
+                    className="block px-6 py-3 hover:bg-amber-50 transition"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
@@ -248,8 +252,8 @@ export default function Home() {
         </div>
 
         {/* AI 주목 종목 */}
-        <div className="bg-white rounded-lg shadow mb-8">
-          <div className="px-6 py-4 border-b border-gray-200">
+        <div className="bg-white rounded-lg shadow border border-amber-100 mb-8">
+          <div className="px-6 py-4 border-b border-amber-100">
             <h2 className="text-xl font-bold text-gray-900">🤖 AI 주목 종목 TOP</h2>
             <p className="text-sm text-gray-500 mt-1">최근 3일간 AI 시그널이 가장 많은 종목</p>
           </div>
@@ -298,7 +302,7 @@ export default function Home() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Link
             href="/predictions"
-            className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition"
+            className="bg-white rounded-lg shadow border border-amber-100 p-6 hover:shadow-lg hover:border-amber-200 transition"
           >
             <div className="text-3xl mb-3">📋</div>
             <h3 className="text-lg font-bold text-gray-900 mb-2">예측 이력</h3>
@@ -309,7 +313,7 @@ export default function Home() {
 
           <Link
             href="/stocks"
-            className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition"
+            className="bg-white rounded-lg shadow border border-amber-100 p-6 hover:shadow-lg hover:border-amber-200 transition"
           >
             <div className="text-3xl mb-3">📊</div>
             <h3 className="text-lg font-bold text-gray-900 mb-2">종목 분석</h3>
@@ -320,7 +324,7 @@ export default function Home() {
 
           <Link
             href="/admin/dashboard"
-            className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition border-2 border-blue-100"
+            className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition border-2 border-amber-200 hover:border-amber-300"
           >
             <div className="text-3xl mb-3">⚙️</div>
             <h3 className="text-lg font-bold text-gray-900 mb-2">관리자 대시보드</h3>

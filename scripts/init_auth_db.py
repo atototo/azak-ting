@@ -32,7 +32,7 @@ def get_database_url() -> str:
     db_port = os.getenv("POSTGRES_PORT", "5432")
     db_user = os.getenv("POSTGRES_USER", "postgres")
     db_password = os.getenv("POSTGRES_PASSWORD", "")
-    db_name = os.getenv("POSTGRES_DB", "craveny")
+    db_name = os.getenv("POSTGRES_DB", "azak")
 
     return f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
 
@@ -52,7 +52,7 @@ def create_tables(engine):
 
 def create_admin_user(db: SessionLocal):
     """기본 관리자 계정 생성 (이미 존재하면 스킵)."""
-    admin_email = "admin@craveny.com"
+    admin_email = "admin@azak.com"
 
     # 이미 존재하는지 확인
     existing_admin = db.query(User).filter(User.email == admin_email).first()
@@ -93,7 +93,7 @@ def create_admin_user(db: SessionLocal):
 def main():
     """메인 실행 함수."""
     print("=" * 60)
-    print("🔐 Craveny 사용자 인증 데이터베이스 초기화")
+    print("🔐 Azak 사용자 인증 데이터베이스 초기화")
     print("=" * 60)
     print()
 

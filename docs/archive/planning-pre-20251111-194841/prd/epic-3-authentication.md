@@ -11,7 +11,7 @@
 
 ### 1.1 Epic 목표
 
-기존 Craveny 시스템에 **이메일/비밀번호 기반 사용자 인증 시스템**과 **역할 기반 접근 제어(RBAC)**를 추가하여, 일반 사용자와 관리자를 구분하고 각 권한에 맞는 메뉴 접근을 제어합니다.
+기존 Azak 시스템에 **이메일/비밀번호 기반 사용자 인증 시스템**과 **역할 기반 접근 제어(RBAC)**를 추가하여, 일반 사용자와 관리자를 구분하고 각 권한에 맞는 메뉴 접근을 제어합니다.
 
 **주요 달성 목표**:
 - ✅ 이메일/비밀번호 기반 로그인 시스템 구축
@@ -81,7 +81,7 @@
 ### FR4: 기본 관리자 계정
 
 **FR4.1**: 시스템 최초 배포 시 기본 관리자 계정을 자동 생성해야 한다.
-- 이메일: `admin@craveny.com`
+- 이메일: `admin@azak.com`
 - 닉네임: `관리자`
 - 비밀번호: 환경 변수 `ADMIN_DEFAULT_PASSWORD`에서 로드
 - 역할: `admin`
@@ -148,7 +148,7 @@
 3. DB 마이그레이션 스크립트 (`scripts/init_auth_db.py`)가 제공된다.
 
 4. 스크립트 실행 시 기본 관리자 계정이 생성된다:
-   - 이메일: `admin@craveny.com`
+   - 이메일: `admin@azak.com`
    - 닉네임: `관리자`
    - 비밀번호: `.env` 파일의 `ADMIN_DEFAULT_PASSWORD`
    - 역할: `admin`
@@ -474,7 +474,7 @@
   "items": [
     {
       "id": 1,
-      "email": "admin@craveny.com",
+      "email": "admin@azak.com",
       "nickname": "관리자",
       "role": "admin",
       "is_active": true,

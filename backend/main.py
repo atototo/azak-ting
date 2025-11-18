@@ -1,5 +1,5 @@
 """
-Craveny FastAPI 애플리케이션 진입점
+Azak FastAPI 애플리케이션 진입점
 """
 import logging
 from fastapi import FastAPI
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # FastAPI 앱 생성
 app = FastAPI(
-    title="Craveny API",
+    title="Azak API",
     version="1.0.0",
     description="증권 뉴스 예측 및 텔레그램 알림 시스템",
     debug=settings.DEBUG,

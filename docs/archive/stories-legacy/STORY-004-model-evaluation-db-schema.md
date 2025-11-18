@@ -418,7 +418,7 @@ def downgrade():
 alembic upgrade head
 
 # PostgreSQL 접속하여 테이블 확인
-psql -U craveny -d craveny_db
+psql -U azak -d azak_db
 \d model_evaluations
 \d daily_model_performance
 \d evaluation_history

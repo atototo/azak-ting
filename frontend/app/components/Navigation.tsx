@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/app/contexts/AuthContext";
+import { Cookie } from "lucide-react";
 
 export default function Navigation() {
   const pathname = usePathname();
@@ -43,13 +44,16 @@ export default function Navigation() {
   };
 
   return (
-    <nav className="bg-white shadow">
+    <nav className="bg-white shadow border-b-2 border-amber-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
               <Link href="/">
-                <h1 className="text-xl font-bold text-gray-900">📊 Craveny</h1>
+                <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                  <Cookie className="w-6 h-6 text-amber-600" />
+                  아작
+                </h1>
               </Link>
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:space-x-8">

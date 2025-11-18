@@ -207,7 +207,7 @@ WHERE short_term_target_price IS NOT NULL;
 **해결**:
 ```bash
 # 해당 종목의 데이터 확인
-docker exec craveny-postgres psql -U postgres -d craveny -c \
+docker exec azak-postgres psql -U postgres -d azak -c \
   "SELECT stock_code, custom_data FROM stock_analysis_summaries WHERE stock_code = 'XXX';"
 
 # 스크립트는 에러가 있어도 계속 진행하므로
@@ -222,7 +222,7 @@ docker exec craveny-postgres psql -U postgres -d craveny -c \
 ./scripts/restore_reports.sh data/backups/migration_before_20251116.sql
 
 # 인덱스 재생성 (필요한 경우)
-docker exec craveny-postgres psql -U postgres -d craveny -c \
+docker exec azak-postgres psql -U postgres -d azak -c \
   "REINDEX TABLE stock_analysis_summaries;"
 ```
 

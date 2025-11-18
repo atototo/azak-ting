@@ -1,7 +1,7 @@
 # User Story: KIS API 통합 - 재무비율 및 상품정보
 
 **Story ID**: US-002
-**Epic**: [CRAVENY-EPIC-001](../../stock-analysis-redesign-epic.md)
+**Epic**: [AZAK-EPIC-001](../../stock-analysis-redesign-epic.md)
 **제목**: 재무비율 및 상품정보 조회 KIS API 메서드 구현
 **우선순위**: P0 (필수)
 **스토리 포인트**: 8

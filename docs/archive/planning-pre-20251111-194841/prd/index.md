@@ -1,4 +1,4 @@
-# Craveny Product Requirements Document (PRD)
+# Azak Product Requirements Document (PRD)
 
 **Version:** 1.1
 **Date:** 2025-10-27

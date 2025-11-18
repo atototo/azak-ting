@@ -1,8 +1,8 @@
 # generated: 2025-11-11 21:52
-# project: craveny
-# project_key: craveny
+# project: azak
+# project_key: azak
 # tracking_system: file-system
-# story_location: /Users/winter.e/easy-work/craveny/docs/stories
+# story_location: /Users/winter.e/easy-work/azak/docs/stories
 
 # STATUS DEFINITIONS:
 # ==================
@@ -29,10 +29,10 @@
 # - Dev moves story to 'review', dev reviews, then Dev moves to 'done'
 
 generated: 2025-11-11 21:52
-project: craveny
-project_key: craveny
+project: azak
+project_key: azak
 tracking_system: file-system
-story_location: /Users/winter.e/easy-work/craveny/docs/stories
+story_location: /Users/winter.e/easy-work/azak/docs/stories
 
 development_status:
   epic-1: backlog

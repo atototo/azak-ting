@@ -1,7 +1,7 @@
 # Source Tree Analysis (Quick Scan)
 
 ```
-craveny/
+azak/
 ├── backend/                      # FastAPI service + schedulers (Part: backend)
 │   ├── api/                      # Router modules (auth, stocks, prediction, etc.)
 │   ├── auth/                     # JWT helpers, bcrypt hashing, dependency injection

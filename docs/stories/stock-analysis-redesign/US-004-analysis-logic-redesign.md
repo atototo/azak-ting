@@ -1,7 +1,7 @@
 # User Story: 분석 로직 재설계 - 뉴스 독립성 확보
 
 **Story ID**: US-004
-**Epic**: [CRAVENY-EPIC-001](../../stock-analysis-redesign-epic.md)
+**Epic**: [AZAK-EPIC-001](../../stock-analysis-redesign-epic.md)
 **제목**: 종목 등록 즉시 분석 및 DB 기반 리포트 생성
 **우선순위**: P0 (필수)
 **스토리 포인트**: 13

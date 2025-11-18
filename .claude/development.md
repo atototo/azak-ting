@@ -11,19 +11,19 @@
 #### 백엔드 코드 변경 시
 ```bash
 # 백엔드만 재시작
-pm2 restart craveny-backend
+pm2 restart azak-backend
 
 # 로그 확인
-pm2 logs craveny-backend
+pm2 logs azak-backend
 ```
 
 #### 프론트엔드 코드 변경 시
 ```bash
 # 프론트엔드만 재시작
-pm2 restart craveny-frontend
+pm2 restart azak-frontend
 
 # 로그 확인
-pm2 logs craveny-frontend
+pm2 logs azak-frontend
 ```
 
 #### 모든 서비스 재시작
@@ -38,14 +38,14 @@ pm2 status
 #### 의존성 변경 시 (requirements.txt, package.json)
 ```bash
 # 백엔드 의존성 변경
-cd /Users/young/ai-work/craveny
+cd /Users/young/ai-work/azak
 uv sync
-pm2 restart craveny-backend
+pm2 restart azak-backend
 
 # 프론트엔드 의존성 변경
-cd /Users/young/ai-work/craveny/frontend
+cd /Users/young/ai-work/azak/frontend
 npm install
-pm2 restart craveny-frontend
+pm2 restart azak-frontend
 ```
 
 ### 개발 서버 URL
@@ -53,7 +53,7 @@ pm2 restart craveny-frontend
 - **프론트엔드**: http://localhost:3030
 - **백엔드 API**: http://localhost:8000
 - **백엔드 Docs**: http://localhost:8000/docs
-- **ngrok Public URL**: https://craveny.ngrok.app
+- **ngrok Public URL**: https://azak.ngrok.app
 
 ### 주요 명령어
 
@@ -65,8 +65,8 @@ pm2 status
 pm2 logs
 
 # 특정 서비스 로그
-pm2 logs craveny-backend
-pm2 logs craveny-frontend
+pm2 logs azak-backend
+pm2 logs azak-frontend
 
 # 서비스 중지
 pm2 stop all
@@ -99,10 +99,10 @@ logs/
 ### 2. 변경사항 테스트
 ```bash
 # 서비스 재시작
-pm2 restart craveny-backend  # 또는 craveny-frontend
+pm2 restart azak-backend  # 또는 azak-frontend
 
 # 로그로 에러 확인
-pm2 logs craveny-backend --lines 50
+pm2 logs azak-backend --lines 50
 ```
 
 ### 3. Git 커밋
@@ -142,7 +142,7 @@ git push origin main
 
 ```bash
 # ngrok 재시작
-pm2 restart craveny-ngrok
+pm2 restart azak-ngrok
 
 # ngrok 상태 확인
 curl http://127.0.0.1:4040/api/tunnels

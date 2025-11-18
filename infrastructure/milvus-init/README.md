@@ -37,14 +37,14 @@ init_milvus()
 
 ```bash
 # 1. 기존 서버에서 컬렉션 내보내기
-docker cp craveny-milvus:/var/lib/milvus ./milvus-backup
+docker cp azak-milvus:/var/lib/milvus ./milvus-backup
 
 # 2. 새 서버로 복사
-scp -r ./milvus-backup user@newserver:/path/to/craveny/infrastructure/
+scp -r ./milvus-backup user@newserver:/path/to/azak/infrastructure/
 
 # 3. 새 서버에서 복원
-docker cp ./milvus-backup craveny-milvus:/var/lib/milvus
-docker restart craveny-milvus
+docker cp ./milvus-backup azak-milvus:/var/lib/milvus
+docker restart azak-milvus
 ```
 
 ## 주의사항

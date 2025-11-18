@@ -389,7 +389,7 @@ prompt = f"""
 - KIS API 문서: 재무비율 [v1_국내주식-080]
 - KIS API 문서: 상품기본조회 [v1_국내주식-029]
 - 현재 시스템 분석 결과 (본 세션)
-- 기존 코드베이스: `/Users/young/ai-work/craveny/backend/`
+- 기존 코드베이스: `/Users/young/ai-work/azak/backend/`
 
 ---
 

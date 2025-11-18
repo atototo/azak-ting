@@ -1,7 +1,7 @@
 # Implementation Readiness Assessment Report
 
 **Date:** 2025-11-11
-**Project:** craveny
+**Project:** azak
 **Assessed By:** young
 **Assessment Type:** Phase 3 to Phase 4 Transition Validation
 

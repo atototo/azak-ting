@@ -319,7 +319,7 @@ reddit_predictions = db.query(Prediction).join(NewsArticle).filter(
 # Reddit API Credentials
 REDDIT_CLIENT_ID=your_14_char_client_id
 REDDIT_CLIENT_SECRET=your_27_char_secret
-REDDIT_USER_AGENT=Craveny/1.0 by /u/your_username
+REDDIT_USER_AGENT=Azak/1.0 by /u/your_username
 
 # Reddit Crawler Settings
 REDDIT_SUBREDDITS=stocks,investing,Korea_Stock,StockMarket

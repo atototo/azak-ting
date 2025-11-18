@@ -44,7 +44,7 @@ def backup_predictions():
         print(f'📊 Total records backed up: {len(backup_data)}')
         print(f'')
         print(f'To restore from this backup:')
-        print(f'  psql -h localhost -U postgres -d craveny -c "TRUNCATE TABLE predictions CASCADE;"')
+        print(f'  psql -h localhost -U postgres -d azak -c "TRUNCATE TABLE predictions CASCADE;"')
         print(f'  python scripts/restore_predictions.py {backup_file}')
 
         return backup_file, len(backup_data)

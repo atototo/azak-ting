@@ -16,7 +16,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // 세션 쿠키 확인
-  const sessionCookie = request.cookies.get("craveny_session");
+  const sessionCookie = request.cookies.get("azak_session");
 
   // 세션이 없으면 로그인 페이지로 리다이렉트
   if (!sessionCookie) {

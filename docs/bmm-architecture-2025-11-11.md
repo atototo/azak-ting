@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-Craveny is deployed as a cost-efficient single-node SaaS stack: Docker Compose on an EC2 t3.small instance orchestrates Postgres, Redis, Milvus (with etcd + MinIO), while FastAPI and Next.js power the API/notification layer and investor dashboard. The architecture emphasizes 24/7 uptime, deterministic model-comparison experiences, and easy rehydration from source via scripted setup.
+Azak is deployed as a cost-efficient single-node SaaS stack: Docker Compose on an EC2 t3.small instance orchestrates Postgres, Redis, Milvus (with etcd + MinIO), while FastAPI and Next.js power the API/notification layer and investor dashboard. The architecture emphasizes 24/7 uptime, deterministic model-comparison experiences, and easy rehydration from source via scripted setup.
 
 ## Project Initialization
 
@@ -30,7 +30,7 @@ This establishes the core services (Postgres/Redis/Milvus) and exposes the FastA
 ## Project Structure
 
 ```
-craveny/
+azak/
 ├── backend/                      # FastAPI application, services, schedulers, crawlers
 │   ├── api/                      # Domain routers (auth, stocks, prediction, etc.)
 │   ├── services/                 # Business logic

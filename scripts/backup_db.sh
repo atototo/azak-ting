@@ -7,7 +7,7 @@ set -e
 # 설정
 BACKUP_DIR="data/backups"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-BACKUP_FILE="${BACKUP_DIR}/craveny_backup_${TIMESTAMP}.sql"
+BACKUP_FILE="${BACKUP_DIR}/azak_backup_${TIMESTAMP}.sql"
 
 # 백업 디렉토리 생성
 mkdir -p "$BACKUP_DIR"
@@ -44,10 +44,10 @@ echo "📊 Backup size: $(du -h $BACKUP_FILE | cut -f1)"
 
 # 7일 이상 된 백업 파일 삭제
 echo "🧹 Cleaning up old backups (older than 7 days)..."
-find "$BACKUP_DIR" -name "craveny_backup_*.sql.gz" -type f -mtime +7 -delete
+find "$BACKUP_DIR" -name "azak_backup_*.sql.gz" -type f -mtime +7 -delete
 echo "✅ Cleanup completed!"
 
 # 백업 파일 목록 표시
 echo ""
 echo "📋 Recent backups:"
-ls -lh "$BACKUP_DIR"/craveny_backup_*.sql.gz 2>/dev/null | tail -5 || echo "No backups found"
+ls -lh "$BACKUP_DIR"/azak_backup_*.sql.gz 2>/dev/null | tail -5 || echo "No backups found"

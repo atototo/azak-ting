@@ -48,7 +48,7 @@ def test_simple_message():
     notifier = get_telegram_notifier()
 
     message = """
-🤖 **Craveny 테스트 메시지**
+🤖 **Azak 테스트 메시지**
 
 텔레그램 봇 연동이 정상적으로 작동합니다!
 

@@ -15,13 +15,13 @@ npm install -g pm2
 
 ```bash
 # 모든 서비스 시작
-cd /Users/young/ai-work/craveny
+cd /Users/young/ai-work/azak
 pm2 start ecosystem.config.js
 
 # 또는 개별 서비스 시작
-pm2 start ecosystem.config.js --only craveny-backend
-pm2 start ecosystem.config.js --only craveny-frontend
-pm2 start ecosystem.config.js --only craveny-ngrok
+pm2 start ecosystem.config.js --only azak-backend
+pm2 start ecosystem.config.js --only azak-frontend
+pm2 start ecosystem.config.js --only azak-ngrok
 ```
 
 ## 상태 확인
@@ -34,7 +34,7 @@ pm2 status
 pm2 monit
 
 # 특정 서비스 정보
-pm2 show craveny-backend
+pm2 show azak-backend
 ```
 
 ## 로그 확인
@@ -44,9 +44,9 @@ pm2 show craveny-backend
 pm2 logs
 
 # 특정 서비스 로그
-pm2 logs craveny-backend
-pm2 logs craveny-frontend
-pm2 logs craveny-ngrok
+pm2 logs azak-backend
+pm2 logs azak-frontend
+pm2 logs azak-ngrok
 
 # 로그 파일 위치
 ls -l logs/
@@ -65,9 +65,9 @@ pm2 flush
 pm2 restart all
 
 # 특정 서비스 재시작
-pm2 restart craveny-backend
-pm2 restart craveny-frontend
-pm2 restart craveny-ngrok
+pm2 restart azak-backend
+pm2 restart azak-frontend
+pm2 restart azak-ngrok
 
 # 코드 변경 후 재시작 (다운타임 없이)
 pm2 reload all
@@ -80,13 +80,13 @@ pm2 reload all
 pm2 stop all
 
 # 특정 서비스 중지
-pm2 stop craveny-backend
+pm2 stop azak-backend
 
 # 모든 서비스 삭제 (프로세스 제거)
 pm2 delete all
 
 # 특정 서비스 삭제
-pm2 delete craveny-backend
+pm2 delete azak-backend
 ```
 
 ## 자동 시작 설정 (맥북 재부팅 시)
@@ -110,7 +110,7 @@ pm2 unstartup
 - **프론트엔드**: http://localhost:3030
 - **백엔드 API**: http://localhost:8000
 - **백엔드 Docs**: http://localhost:8000/docs
-- **ngrok Public URL**: https://craveny.ngrok.app
+- **ngrok Public URL**: https://azak.ngrok.app
 
 ## 트러블슈팅
 
@@ -118,7 +118,7 @@ pm2 unstartup
 
 ```bash
 # 로그 확인
-pm2 logs craveny-backend --lines 100
+pm2 logs azak-backend --lines 100
 
 # 포트 충돌 확인
 lsof -ti:3030  # 프론트엔드
@@ -136,7 +136,7 @@ pm2 start ecosystem.config.js
 pm2 monit
 
 # 서비스 재시작
-pm2 restart craveny-backend
+pm2 restart azak-backend
 ```
 
 ### ngrok이 연결되지 않을 때
@@ -146,10 +146,10 @@ pm2 restart craveny-backend
 curl http://127.0.0.1:4040/api/tunnels
 
 # ngrok 재시작
-pm2 restart craveny-ngrok
+pm2 restart azak-ngrok
 
 # ngrok 로그 확인
-pm2 logs craveny-ngrok
+pm2 logs azak-ngrok
 ```
 
 ## 유용한 명령어 모음

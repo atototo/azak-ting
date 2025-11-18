@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Cookie } from "lucide-react";
 
 interface StockSummary {
   stock_code: string;
@@ -48,8 +49,13 @@ export default function StocksPage() {
     <div className="min-h-screen">
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">종목 분석</h1>
-          <p className="text-gray-600 mt-1">종목별 시장 동향 및 예측 현황을 확인하세요</p>
+          <div className="flex items-center gap-3 mb-2">
+            <Cookie className="w-7 h-7 text-amber-600" />
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-amber-600 to-orange-600 bg-clip-text text-transparent">
+              종목 분석
+            </h1>
+          </div>
+          <p className="text-gray-600">종목별 시장 동향 및 예측 현황을 확인하세요</p>
         </div>
 
         {/* Summary Stats */}

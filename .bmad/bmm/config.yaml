@@ -3,7 +3,7 @@
 # Version: 6.0.0-alpha.8
 # Date: 2025-11-11T10:32:37.668Z
 
-project_name: craveny
+project_name: azak
 user_skill_level: intermediate
 tech_docs: '{project-root}/docs/technical'
 dev_ephemeral_location: '{project-root}/.bmad-ephemeral'

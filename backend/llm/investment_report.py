@@ -81,8 +81,8 @@ class InvestmentReportGenerator:
                 api_key=settings.OPENROUTER_API_KEY,
                 base_url="https://openrouter.ai/api/v1",
                 default_headers={
-                    "HTTP-Referer": "https://craveny.ai",
-                    "X-Title": "Craveny Investment Report",
+                    "HTTP-Referer": "https://azak.ai",
+                    "X-Title": "Azak Investment Report",
                 }
             )
         else:  # openai

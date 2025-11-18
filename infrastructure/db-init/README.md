@@ -15,7 +15,7 @@ Docker Compose가 자동으로 이 디렉토리의 SQL 파일들을 실행합니
 
 ```bash
 # 1. 프로젝트 루트에서
-cd /path/to/craveny
+cd /path/to/azak
 
 # 2. Docker 컨테이너 시작 (최초 실행시 자동으로 DB 초기화)
 docker-compose -f infrastructure/docker-compose.yml up -d postgres
@@ -30,10 +30,10 @@ docker-compose -f infrastructure/docker-compose.yml logs postgres
 
 ```bash
 # 1. 스키마 복원
-docker exec -i craveny-postgres psql -U postgres -d craveny < infrastructure/db-init/01-schema.sql
+docker exec -i azak-postgres psql -U postgres -d azak < infrastructure/db-init/01-schema.sql
 
 # 2. 데이터 복원
-docker exec -i craveny-postgres psql -U postgres -d craveny < infrastructure/db-init/02-data.sql
+docker exec -i azak-postgres psql -U postgres -d azak < infrastructure/db-init/02-data.sql
 ```
 
 ## 주의사항
@@ -64,5 +64,5 @@ docker-compose -f infrastructure/docker-compose.yml up -d postgres
 
 ```bash
 # 예: users 테이블만 복원
-docker exec -i craveny-postgres psql -U postgres -d craveny -c "\\copy users FROM STDIN WITH CSV" < users.csv
+docker exec -i azak-postgres psql -U postgres -d azak -c "\\copy users FROM STDIN WITH CSV" < users.csv
 ```

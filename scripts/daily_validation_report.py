@@ -7,7 +7,7 @@ Usage:
     uv run python scripts/daily_validation_report.py [--days N]
 
 Scheduling (cron):
-    0 16 * * 1-5  cd /path/to/craveny && uv run python scripts/daily_validation_report.py
+    0 16 * * 1-5  cd /path/to/azak && uv run python scripts/daily_validation_report.py
     (장 마감 후 16:00, 평일만 실행)
 """
 import logging

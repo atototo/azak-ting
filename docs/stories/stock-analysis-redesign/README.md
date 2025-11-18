@@ -1,6 +1,6 @@
 # 주식 분석 시스템 개편 - User Stories
 
-**Epic**: [CRAVENY-EPIC-001](../../stock-analysis-redesign-epic.md)
+**Epic**: [AZAK-EPIC-001](../../stock-analysis-redesign-epic.md)
 **PRD**: [stock-analysis-redesign-prd.md](../../stock-analysis-redesign-prd.md)
 **Brief**: [stock-analysis-redesign-brief.md](../../stock-analysis-redesign-brief.md)
 

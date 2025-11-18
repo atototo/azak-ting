@@ -26,7 +26,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def add_admin_user():
     """관리자 계정 추가 (이미 존재하면 스킵)."""
-    admin_email = "admin@craveny.com"
+    admin_email = "admin@azak.com"
 
     db = SessionLocal()
     try:

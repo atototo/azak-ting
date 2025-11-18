@@ -1,4 +1,4 @@
-# Project Overview – Craveny
+# Project Overview – Azak
 
 ## Purpose
 AI 기반 증권 뉴스 분석 및 단기 주가 방향성 예측 플랫폼. 뉴스 크롤링 → GPT-4o 추론 → Next.js 대시보드/텔레그램으로 배포하는 E2E 파이프라인.

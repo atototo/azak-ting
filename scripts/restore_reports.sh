@@ -17,8 +17,8 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # 설정
-CONTAINER_NAME="craveny-postgres"
-DB_NAME="craveny"
+CONTAINER_NAME="azak-postgres"
+DB_NAME="azak"
 DB_USER="postgres"
 
 # 백업 파일 확인

@@ -1,7 +1,7 @@
 # User Story: 프론트엔드 UI 업데이트
 
 **Story ID**: US-005
-**Epic**: [CRAVENY-EPIC-001](../../stock-analysis-redesign-epic.md)
+**Epic**: [AZAK-EPIC-001](../../stock-analysis-redesign-epic.md)
 **제목**: Priority 드롭다운 제거 및 데이터 소스 배지 추가
 **우선순위**: P1 (높음)
 **스토리 포인트**: 5

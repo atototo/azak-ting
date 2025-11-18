@@ -1,7 +1,7 @@
 # User Story: 테스트 및 프로덕션 배포
 
 **Story ID**: US-006
-**Epic**: [CRAVENY-EPIC-001](../../stock-analysis-redesign-epic.md)
+**Epic**: [AZAK-EPIC-001](../../stock-analysis-redesign-epic.md)
 **제목**: 통합 테스트, QA 및 Blue-Green 배포
 **우선순위**: P0 (필수)
 **스토리 포인트**: 8
@@ -254,21 +254,21 @@ alembic upgrade head
 
 # 4. Backend 재시작
 echo "🔄 Restarting backend..."
-pm2 restart craveny-backend-staging
+pm2 restart azak-backend-staging
 
 # 5. Frontend 빌드 및 배포
 echo "🏗️ Building frontend..."
 cd ../frontend
 npm run build
-pm2 restart craveny-frontend-staging
+pm2 restart azak-frontend-staging
 
 # 6. 헬스 체크
 echo "🏥 Health check..."
 sleep 10
-curl -f http://staging.craveny.com/api/health || exit 1
+curl -f http://staging.azak.com/api/health || exit 1
 
 echo "✅ Staging deployment completed!"
-echo "📊 Monitor: http://staging.craveny.com"
+echo "📊 Monitor: http://staging.azak.com"
 ```
 
 **Estimate**: 2 hours
@@ -310,7 +310,7 @@ echo "📊 Monitor: http://staging.craveny.com"
 ssh green-server
 git pull origin main
 alembic upgrade head
-pm2 restart craveny-backend
+pm2 restart azak-backend
 ```
 
 - [ ] Green 서버 헬스 체크 통과
@@ -320,7 +320,7 @@ pm2 restart craveny-backend
 ```bash
 # 로드밸런서 설정 변경
 aws elb modify-load-balancer \
-  --load-balancer-name craveny-lb \
+  --load-balancer-name azak-lb \
   --listeners "Green=50, Blue=50"
 ```
 
@@ -343,7 +343,7 @@ aws elb modify-load-balancer \
 ```bash
 # Green으로 100% 전환
 aws elb modify-load-balancer \
-  --load-balancer-name craveny-lb \
+  --load-balancer-name azak-lb \
   --listeners "Green=100, Blue=0"
 ```
 
@@ -356,7 +356,7 @@ aws elb modify-load-balancer \
 ```bash
 # 1. 트래픽 Blue로 전환 (30초)
 aws elb modify-load-balancer \
-  --load-balancer-name craveny-lb \
+  --load-balancer-name azak-lb \
   --listeners "Green=0, Blue=100"
 
 # 2. DB 롤백 (필요 시)

@@ -1,4 +1,4 @@
-# 🚀 Craveny 실행 가이드
+# 🚀 Azak 실행 가이드
 
 주가 예측 및 텔레그램 알림 시스템 실행 방법
 
@@ -30,7 +30,7 @@
 
 **방법 1: uv 사용 (가장 간단, 권장)** ⭐
 ```bash
-uv run craveny
+uv run azak
 ```
 
 **방법 2: Python 모듈로 실행**

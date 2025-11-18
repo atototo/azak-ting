@@ -1,8 +1,8 @@
-# Craveny
+# Azak
 
 **AI 기반 증권 뉴스 분석 및 투자 인사이트 플랫폼**
 
-Craveny는 국내 증권 뉴스를 자동으로 수집하고, OpenAI GPT-4o를 활용하여 관련 종목의 단기 주가 방향성을 예측한 후, Next.js 웹 대시보드와 텔레그램 봇을 통해 사용자에게 실시간 분석 결과를 제공하는 Full-Stack 투자 인사이트 플랫폼입니다.
+Azak은 국내 증권 뉴스를 자동으로 수집하고, OpenAI GPT-4o를 활용하여 관련 종목의 단기 주가 방향성을 예측한 후, Next.js 웹 대시보드와 텔레그램 봇을 통해 사용자에게 실시간 분석 결과를 제공하는 Full-Stack 투자 인사이트 플랫폼입니다.
 
 ## 🎯 주요 기능
 
@@ -51,8 +51,8 @@ Craveny는 국내 증권 뉴스를 자동으로 수집하고, OpenAI GPT-4o를 �
 ### 1. 저장소 클론
 
 ```bash
-git clone https://github.com/your-org/craveny.git
-cd craveny
+git clone https://github.com/your-org/azak.git
+cd azak
 ```
 
 ### 2. 환경 변수 설정
@@ -162,7 +162,7 @@ mypy backend/
 ## 📁 프로젝트 구조
 
 ```
-craveny/
+azak/
 ├── frontend/                    # Next.js 애플리케이션
 │   ├── app/                    # App Router
 │   │   ├── page.tsx           # 사용자 대시보드 (/)

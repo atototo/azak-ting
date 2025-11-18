@@ -1,5 +1,5 @@
 """
-Craveny 애플리케이션 설정 관리
+Azak 애플리케이션 설정 관리
 모든 환경 변수는 이 파일을 통해 접근
 """
 from pydantic_settings import BaseSettings
@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     """애플리케이션 설정 클래스"""
 
     # 애플리케이션
-    APP_NAME: str = "Craveny"
+    APP_NAME: str = "Azak"
     DEBUG: bool = False
 
     # PostgreSQL
@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     POSTGRES_PORT: int = 5432
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str
-    POSTGRES_DB: str = "craveny"
+    POSTGRES_DB: str = "azak"
 
     @property
     def DATABASE_URL(self) -> str:
@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     # 인증 (Authentication)
     SECRET_KEY: str = "your-secret-key-change-this-in-production"
     ADMIN_DEFAULT_PASSWORD: str = "admin123"
-    SESSION_COOKIE_NAME: str = "craveny_session"
+    SESSION_COOKIE_NAME: str = "azak_session"
     SESSION_MAX_AGE: int = 86400  # 24시간 (초 단위)
 
     # DART (금융감독원 공시)
@@ -79,7 +79,7 @@ class Settings(BaseSettings):
     # Reddit API
     REDDIT_CLIENT_ID: str = ""
     REDDIT_CLIENT_SECRET: str = ""
-    REDDIT_USER_AGENT: str = "Craveny/1.0"
+    REDDIT_USER_AGENT: str = "Azak/1.0"
 
     # Reddit Crawler
     REDDIT_SUBREDDITS: str = "stocks,investing,Korea_Stock,StockMarket"

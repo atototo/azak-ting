@@ -15843,7 +15843,7 @@ COPY public.telegram_users (id, user_id, subscribed_at, is_active) FROM stdin;
 --
 
 COPY public.users (id, email, nickname, password_hash, role, is_active, created_at, updated_at) FROM stdin;
-1	admin@craveny.com	관리자	$2b$12$5nwk2CtTZp3CRdRuGhUN3ORVE9daYQaGV/ZuiJSWqxiP1uLDZsPZG	admin	t	2025-11-10 12:23:47.045438	2025-11-10 12:23:47.045444
+1	admin@azak.com	관리자	$2b$12$5nwk2CtTZp3CRdRuGhUN3ORVE9daYQaGV/ZuiJSWqxiP1uLDZsPZG	admin	t	2025-11-10 12:23:47.045438	2025-11-10 12:23:47.045444
 2	isbn8@naver.com	사용자용	$2b$12$YM4Nx3WvKiTj9Ho1BJTA6uH0MyUM43u/7bTx9kqelDwmA2YCqi8ru	user	t	2025-11-11 01:04:46.701736	2025-11-11 01:04:46.701739
 \.
 

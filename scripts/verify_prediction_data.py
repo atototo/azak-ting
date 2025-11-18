@@ -18,7 +18,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 # Add backend to path
-sys.path.insert(0, '/Users/winter.e/easy-work/craveny')
+sys.path.insert(0, '/Users/winter.e/easy-work/azak')
 
 from backend.db.models.prediction import Prediction
 from backend.config import settings
@@ -344,7 +344,7 @@ def save_anomaly_report(db):
     logger.info("10. Saving Anomaly Report")
     logger.info("=" * 80)
 
-    report_path = '/Users/winter.e/easy-work/craveny/scripts/anomaly_report.md'
+    report_path = '/Users/winter.e/easy-work/azak/scripts/anomaly_report.md'
 
     with open(report_path, 'w', encoding='utf-8') as f:
         f.write("# Prediction Migration Anomaly Report\n\n")

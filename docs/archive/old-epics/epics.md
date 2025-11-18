@@ -1,4 +1,4 @@
-# craveny - Epic Breakdown
+# azak - Epic Breakdown
 
 **Author:** young
 **Date:** 2025-11-11
@@ -9,7 +9,7 @@
 
 ## Overview
 
-Craveny will be delivered through four cohesive epics: (1) Infra & Deployment Foundation, (2) Data/Model Pipeline Stabilization, (3) Dashboard & Model Comparison Experience, (4) Telegram & Ops Notifications. Each epic is scoped to a single value stream and sized so that its stories fit 200k-context dev agents.
+Azak will be delivered through four cohesive epics: (1) Infra & Deployment Foundation, (2) Data/Model Pipeline Stabilization, (3) Dashboard & Model Comparison Experience, (4) Telegram & Ops Notifications. Each epic is scoped to a single value stream and sized so that its stories fit 200k-context dev agents.
 
 ---
 

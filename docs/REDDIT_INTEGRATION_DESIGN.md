@@ -515,7 +515,7 @@ class CrawlerScheduler:
 # Reddit API Credentials
 REDDIT_CLIENT_ID=your_client_id
 REDDIT_CLIENT_SECRET=your_client_secret
-REDDIT_USER_AGENT=Craveny/1.0 (Stock Analysis Bot)
+REDDIT_USER_AGENT=Azak/1.0 (Stock Analysis Bot)
 
 # Reddit Crawler Settings
 REDDIT_SUBREDDITS=stocks,investing,Korea_Stock,StockMarket
@@ -536,7 +536,7 @@ class Settings(BaseSettings):
     # Reddit API
     REDDIT_CLIENT_ID: str = ""
     REDDIT_CLIENT_SECRET: str = ""
-    REDDIT_USER_AGENT: str = "Craveny/1.0"
+    REDDIT_USER_AGENT: str = "Azak/1.0"
 
     # Reddit Crawler
     REDDIT_SUBREDDITS: str = "stocks,investing,Korea_Stock,StockMarket"
@@ -861,7 +861,7 @@ class TelegramCrawler(BaseNewsCrawler):
 1. Go to https://www.reddit.com/prefs/apps
 2. Click "Create App" or "Create Another App"
 3. Fill in:
-   - Name: Craveny Stock Analysis
+   - Name: Azak Stock Analysis
    - Type: script
    - Description: Korean stock sentiment analysis
    - About URL: (your website)
@@ -872,7 +872,7 @@ class TelegramCrawler(BaseNewsCrawler):
 ```bash
 REDDIT_CLIENT_ID=your_14_char_client_id
 REDDIT_CLIENT_SECRET=your_27_char_secret
-REDDIT_USER_AGENT=Craveny/1.0 by /u/your_reddit_username
+REDDIT_USER_AGENT=Azak/1.0 by /u/your_reddit_username
 ```
 
 ---

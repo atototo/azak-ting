@@ -1,4 +1,4 @@
-# Craveny Product Requirements Document (PRD)
+# Azak Product Requirements Document (PRD)
 
 **Version:** 2.0
 **Date:** 2025-11-02
@@ -198,7 +198,7 @@
 ### 브랜딩
 
 **MVP: 미니멀 브랜딩**
-- 브랜드명 "Craveny" + 이모지 📊 사용
+- 브랜드명 "Azak" + 이모지 📊 사용
 - 전문적이고 신뢰감 있는 톤 유지
 - 과도한 이모지 사용 지양
 
@@ -224,7 +224,7 @@
 - `_기울임_` - 부가 설명
 
 **이모지 사용 원칙:**
-- 📊 Craveny 봇 시그니처
+- 📊 Azak 봇 시그니처
 - 🗞️ 뉴스 제목
 - 📈 상승 예측
 - 📉 하락 예측
@@ -284,7 +284,7 @@ _본 정보는 투자 조언이 아니며, 최종 투자 결정은 본인 책임
 **선택: Monorepo**
 
 ```
-craveny/
+azak/
 ├── backend/
 │   ├── crawlers/       # 뉴스/주가 크롤러
 │   ├── llm/            # LLM 프롬프트, RAG 로직
@@ -977,7 +977,7 @@ PRD v1.1은 아키텍처 단계로 진행하기에 충분한 품질입니다. PM
 
 UX Expert님께,
 
-Craveny 프로젝트의 PRD가 완성되었습니다. 본 PRD를 검토하시고, 텔레그램 메시지 UX를 구체화하는 디자인 작업을 시작해 주세요. "User Interface Design Goals" 섹션에 텔레그램 메시지 포맷 가이드라인이 정의되어 있으니 참고 부탁드립니다.
+Azak 프로젝트의 PRD가 완성되었습니다. 본 PRD를 검토하시고, 텔레그램 메시지 UX를 구체화하는 디자인 작업을 시작해 주세요. "User Interface Design Goals" 섹션에 텔레그램 메시지 포맷 가이드라인이 정의되어 있으니 참고 부탁드립니다.
 
 **주요 작업:**
 - 프리마켓/장중/장후 메시지 템플릿 최종 디자인
@@ -988,7 +988,7 @@ Craveny 프로젝트의 PRD가 완성되었습니다. 본 PRD를 검토하시고
 
 Architect님께,
 
-Craveny 프로젝트의 PRD가 완성되었습니다. 본 PRD의 "Technical Assumptions" 섹션과 Epic 1, Epic 2의 스토리들을 검토하시고, 상세 아키텍처 문서 작성을 시작해 주세요.
+Azak 프로젝트의 PRD가 완성되었습니다. 본 PRD의 "Technical Assumptions" 섹션과 Epic 1, Epic 2의 스토리들을 검토하시고, 상세 아키텍처 문서 작성을 시작해 주세요.
 
 **주요 작업:**
 - Docker Compose 전체 구성 상세화

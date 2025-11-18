@@ -1,7 +1,7 @@
 # User Story: 데이터 수집 스케줄러
 
 **Story ID**: US-003
-**Epic**: [CRAVENY-EPIC-001](../../stock-analysis-redesign-epic.md)
+**Epic**: [AZAK-EPIC-001](../../stock-analysis-redesign-epic.md)
 **제목**: 재무비율 및 상품정보 주간 스케줄 수집
 **우선순위**: P0 (필수)
 **스토리 포인트**: 5

@@ -35,8 +35,8 @@ class StockPredictor:
                 api_key=settings.OPENROUTER_API_KEY,
                 base_url="https://openrouter.ai/api/v1",
                 default_headers={
-                    "HTTP-Referer": "https://craveny.ai",
-                    "X-Title": "Craveny Stock Predictor",
+                    "HTTP-Referer": "https://azak.ai",
+                    "X-Title": "Azak Stock Predictor",
                 }
             )
             self.model = settings.OPENROUTER_MODEL
@@ -98,8 +98,8 @@ class StockPredictor:
                 api_key=settings.OPENROUTER_API_KEY,
                 base_url="https://openrouter.ai/api/v1",
                 default_headers={
-                    "HTTP-Referer": "https://craveny.ai",
-                    "X-Title": "Craveny Stock Predictor",
+                    "HTTP-Referer": "https://azak.ai",
+                    "X-Title": "Azak Stock Predictor",
                 }
             )
         else:  # openai

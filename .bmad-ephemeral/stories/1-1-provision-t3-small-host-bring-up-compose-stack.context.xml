@@ -6,7 +6,7 @@
     <status>drafted</status>
     <generatedAt>2025-11-12T02:54:28Z</generatedAt>
     <generator>BMAD Story Context Workflow</generator>
-    <sourceStoryPath>/Users/winter.e/easy-work/craveny/.bmad-ephemeral/stories/1-1-provision-t3-small-host-bring-up-compose-stack.md</sourceStoryPath>
+    <sourceStoryPath>/Users/winter.e/easy-work/azak/.bmad-ephemeral/stories/1-1-provision-t3-small-host-bring-up-compose-stack.md</sourceStoryPath>
   </metadata>
 
   <story>
@@ -42,7 +42,7 @@
 
   <artifacts>
     <docs>
-      <doc path="docs/epics.md" title="craveny - Epic Breakdown" section="Epic 1 · Story 1.1">
+      <doc path="docs/epics.md" title="azak - Epic Breakdown" section="Epic 1 · Story 1.1">
         <snippet>Epic 1.1 mandates bringing up Postgres, Redis, Milvus, MinIO, and etcd on a single t3.small host via infrastructure/docker-compose.yml with Docker 24/Compose 2.20 so data volumes materialize from .env configuration.</snippet>
       </doc>
       <doc path="docs/PRD.md" title="Product Requirements Document" section="Success Criteria">
@@ -57,7 +57,7 @@
       <doc path="docs/architecture.md" title="Architecture" section="Project Initialization">
         <snippet>Architecture initialization instructs engineers to run docker-compose up -d before attaching FastAPI/Next.js, reinforcing that this story establishes the shared data plane for every later epic.</snippet>
       </doc>
-      <doc path="README.md" title="Craveny README" section="인프라 서비스 시작">
+      <doc path="README.md" title="Azak README" section="인프라 서비스 시작">
         <snippet>The README details the same compose commands plus health endpoints (API, Swagger, /health) and therefore serves as the quick reference users will follow when verifying AC1.</snippet>
       </doc>
     </docs>

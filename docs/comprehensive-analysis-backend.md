@@ -3,7 +3,7 @@
 ## Entry Points & Process Model
 - `backend/main.py` registers FastAPI app and routers under `/api`.
 - `backend/scheduler.py` + `backend/scheduler/` hold APScheduler jobs (news crawling, evaluation refresh).
-- CLI entry defined in `pyproject.toml` (`craveny = backend.main:main`).
+- CLI entry defined in `pyproject.toml` (`azak = backend.main:main`).
 
 ## Configuration Surfaces
 - `.env` template at repo root feeds `backend/config.py` via `pydantic-settings`.

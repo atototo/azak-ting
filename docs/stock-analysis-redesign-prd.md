@@ -2,7 +2,7 @@
 # 주식 분석 시스템 개편 - 뉴스 독립성 확보 및 펀더멘털 분석 강화
 
 **문서 유형**: Brownfield PRD (기존 시스템 개편)
-**프로젝트 ID**: CRAVENY-2025-001
+**프로젝트 ID**: AZAK-2025-001
 **작성일**: 2025-11-17
 **최종 수정일**: 2025-11-17
 **작성자**: John (Product Manager)
@@ -764,7 +764,7 @@ async def build_analysis_context_from_db(stock_code: str, db: Session):
 
 - Mary의 프로젝트 브리프: `docs/stock-analysis-redesign-brief.md`
 - KIS API 문서: 재무비율 [v1_국내주식-080], 상품기본조회 [v1_국내주식-029]
-- 현재 코드베이스: `/Users/young/ai-work/craveny/backend/`
+- 현재 코드베이스: `/Users/young/ai-work/azak/backend/`
 
 ---
 

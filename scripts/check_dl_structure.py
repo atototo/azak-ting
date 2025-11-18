@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 url = "https://finance.naver.com/news/news_list.naver?mode=LSS2D&section_id=101&section_id2=258&page=1"
 
 headers = {
-    "User-Agent": "Mozilla/5.0 (Compatible; Craveny/1.0)",
+    "User-Agent": "Mozilla/5.0 (Compatible; Azak/1.0)",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
 }

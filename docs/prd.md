@@ -1,4 +1,4 @@
-# craveny - Product Requirements Document
+# azak - Product Requirements Document
 
 **Author:** young
 **Date:** 2025-11-11
@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-개인 투자자와 소규모 팀이 언제든 접속해 최신 AI 예측과 뉴스 인사이트를 받아볼 수 있도록 Craveny 전체 스택을 24시간 운용 가능한 형태로 배포한다. Next.js 대시보드·FastAPI 백엔드·텔레그램 알림·데이터 파이프라인을 t3.small 수준의 EC2 + Docker Compose 환경에서 경제적으로 제공하는 것이 핵심이다.
+개인 투자자와 소규모 팀이 언제든 접속해 최신 AI 예측과 뉴스 인사이트를 받아볼 수 있도록 Azak 전체 스택을 24시간 운용 가능한 형태로 배포한다. Next.js 대시보드·FastAPI 백엔드·텔레그램 알림·데이터 파이프라인을 t3.small 수준의 EC2 + Docker Compose 환경에서 경제적으로 제공하는 것이 핵심이다.
 
 ### What Makes This Special
 
@@ -112,4 +112,4 @@
 
 ---
 
-_이 PRD는 Craveny가 제공하는 “모델별 AI 분석 비교 경험”을 24시간 안정적으로 배포하기 위한 요구사항을 담고 있다._
+_이 PRD는 Azak가 제공하는 “모델별 AI 분석 비교 경험”을 24시간 안정적으로 배포하기 위한 요구사항을 담고 있다._

@@ -240,8 +240,8 @@ class OpenRouterClient:
         self.api_key = settings.OPENROUTER_API_KEY
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "HTTP-Referer": "https://craveny.ai",
-            "X-Title": "Craveny AI Investment"
+            "HTTP-Referer": "https://azak.ai",
+            "X-Title": "Azak AI Investment"
         }
 
     def create_client(self, model_name: str) -> OpenAI:
