@@ -49,7 +49,7 @@ export default function StocksPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">종목 분석</h1>
-          <p className="text-gray-600 mt-1">종목별 뉴스 및 예측 현황을 확인하세요</p>
+          <p className="text-gray-600 mt-1">종목별 시장 동향 및 예측 현황을 확인하세요</p>
         </div>
 
         {/* Summary Stats */}
@@ -59,7 +59,7 @@ export default function StocksPage() {
             <p className="text-3xl font-bold text-blue-600 mt-2">{stocks.length}개</p>
           </div>
           <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-sm font-medium text-gray-500">총 뉴스 수</h3>
+            <h3 className="text-sm font-medium text-gray-500">시장 동향 수</h3>
             <p className="text-3xl font-bold text-green-600 mt-2">
               {stocks.reduce((sum, s) => sum + s.news_count, 0)}건
             </p>
@@ -99,7 +99,7 @@ export default function StocksPage() {
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">📰 뉴스</span>
+                  <span className="text-gray-600">📊 시장 동향</span>
                   <span className="font-medium text-blue-600">{stock.news_count}건</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
@@ -108,7 +108,7 @@ export default function StocksPage() {
                 </div>
                 {stock.latest_news_date && (
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">🕐 최근 뉴스</span>
+                    <span className="text-gray-600">🕐 최근 분석</span>
                     <span className="text-gray-500">
                       {new Date(stock.latest_news_date).toLocaleDateString("ko-KR")}
                     </span>

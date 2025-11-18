@@ -228,15 +228,23 @@ export default function StockDetailPage() {
               {/* 신뢰도 기준 설명 (토글) */}
               {showConfidenceInfo && (
                 <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-gray-700">
-                  <p className="font-semibold mb-2">📊 신뢰도 평가 기준</p>
+                  <p className="font-semibold mb-2">📊 신뢰도 평가 기준 (AI 모델이 자동 판단)</p>
+                  <p className="mb-2 text-xs text-gray-600">
+                    AI 모델이 6가지 데이터 소스의 <strong>품질과 완전도</strong>를 종합 평가합니다:
+                  </p>
                   <ul className="space-y-1 ml-4">
-                    <li>• <strong className="text-green-700">높음 🟢</strong>: 6가지 데이터 소스가 모두 충분히 확보됨</li>
-                    <li>• <strong className="text-yellow-700">중간 🟡</strong>: 일부 데이터 소스가 부족하지만 핵심 정보는 확보됨</li>
+                    <li>• <strong className="text-green-700">높음 🟢</strong>: 모든 데이터가 충분한 양과 우수한 품질로 확보됨</li>
+                    <li>• <strong className="text-yellow-700">중간 🟡</strong>: 데이터가 있으나 일부 부족하거나 품질이 제한적임</li>
                     <li>• <strong className="text-red-700">낮음 🔴</strong>: 필수 데이터가 많이 부족하여 분석의 한계가 있음</li>
                   </ul>
-                  <p className="mt-2 text-xs text-gray-600">
-                    * 6가지 데이터 소스: 시장 데이터, 투자자별 거래, 재무비율, 상품정보, 기술적 지표, 뉴스
-                  </p>
+                  <div className="mt-2 pt-2 border-t border-blue-300">
+                    <p className="text-xs text-gray-600">
+                      💡 <strong>데이터 소스 ✅ 표시</strong>는 존재 여부만 나타내며, 신뢰도는 AI가 품질까지 평가합니다
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      * 6가지 데이터 소스: 주가·거래량, 투자자 수급, 재무 지표, 기업 정보, 기술적 지표, 시장 동향
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
@@ -713,15 +721,23 @@ export default function StockDetailPage() {
                 {/* 신뢰도 기준 설명 (토글) */}
                 {showConfidenceInfo && (
                   <div className="mt-2 p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-gray-700">
-                    <p className="font-semibold mb-2">📊 신뢰도 평가 기준</p>
+                    <p className="font-semibold mb-2">📊 신뢰도 평가 기준 (AI 모델이 자동 판단)</p>
+                    <p className="mb-2 text-sm text-gray-600">
+                      AI 모델이 6가지 데이터 소스의 <strong>품질과 완전도</strong>를 종합 평가합니다:
+                    </p>
                     <ul className="space-y-1 ml-4">
-                      <li>• <strong className="text-green-700">높음 🟢</strong>: 6가지 데이터 소스가 모두 충분히 확보됨</li>
-                      <li>• <strong className="text-yellow-700">중간 🟡</strong>: 일부 데이터 소스가 부족하지만 핵심 정보는 확보됨</li>
+                      <li>• <strong className="text-green-700">높음 🟢</strong>: 모든 데이터가 충분한 양과 우수한 품질로 확보됨</li>
+                      <li>• <strong className="text-yellow-700">중간 🟡</strong>: 데이터가 있으나 일부 부족하거나 품질이 제한적임</li>
                       <li>• <strong className="text-red-700">낮음 🔴</strong>: 필수 데이터가 많이 부족하여 분석의 한계가 있음</li>
                     </ul>
-                    <p className="mt-3 text-xs text-gray-600">
-                      * 6가지 데이터 소스: 시장 데이터, 투자자별 거래, 재무비율, 상품정보, 기술적 지표, 뉴스
-                    </p>
+                    <div className="mt-3 pt-3 border-t border-blue-300">
+                      <p className="text-sm text-gray-600">
+                        💡 <strong>데이터 소스 ✅ 표시</strong>는 존재 여부만 나타내며, 신뢰도는 AI가 품질까지 평가합니다
+                      </p>
+                      <p className="mt-2 text-xs text-gray-500">
+                        * 6가지 데이터 소스: 주가·거래량, 투자자 수급, 재무 지표, 기업 정보, 기술적 지표, 시장 동향
+                      </p>
+                    </div>
                   </div>
                 )}
               </div>
@@ -949,15 +965,15 @@ export default function StockDetailPage() {
           </div>
         )}
 
-        {/* Statistics Section - 뉴스 통계만 표시 */}
+        {/* Statistics Section - 시장 동향 통계 */}
         <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">📊 뉴스 통계</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-4">📊 시장 동향 통계</h2>
           <div className="grid grid-cols-2 gap-6">
             <div className="text-center p-4 bg-green-50 rounded-lg">
               <div className="text-3xl font-bold text-green-600">
                 {stock.statistics.total_news}
               </div>
-              <div className="text-sm text-gray-600 mt-1">총 뉴스</div>
+              <div className="text-sm text-gray-600 mt-1">분석 건수</div>
             </div>
             <div className="text-center p-4 bg-purple-50 rounded-lg">
               <div className="text-3xl font-bold text-purple-600">
@@ -968,9 +984,9 @@ export default function StockDetailPage() {
           </div>
         </div>
 
-        {/* Recent News Section */}
+        {/* Recent Market Analysis Section */}
         <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">📰 최근 뉴스 & AI 분석</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-4">📊 최근 시장 동향 & AI 분석</h2>
           {stock.recent_news.length > 0 ? (
             <div className="space-y-4">
               {stock.recent_news.map((news) => (
@@ -1010,7 +1026,7 @@ export default function StockDetailPage() {
                                 ? '공식공시'
                                 : news.source.includes('증권') || news.source.includes('리서치')
                                 ? '증권리포트'
-                                : '언론매체'
+                                : '시장 정보'
                             }
                           </span>
                           {isMounted && news.published_at && (
@@ -1040,7 +1056,7 @@ export default function StockDetailPage() {
             </div>
           ) : (
             <div className="text-center py-8 text-gray-500">
-              <p>관련 뉴스가 없습니다</p>
+              <p>시장 동향 분석이 없습니다</p>
             </div>
           )}
         </div>

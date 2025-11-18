@@ -138,11 +138,11 @@ export default function AdminDashboard() {
               <span className="text-green-600 font-medium">✅ 정상</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-gray-700">총 뉴스</span>
+              <span className="text-gray-700">총 시장 동향</span>
               <span className="text-blue-600 font-medium">{summary?.total_news || 0}건</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-gray-700">최근 1시간 뉴스</span>
+              <span className="text-gray-700">최근 1시간 시장 동향</span>
               <span className="text-blue-600 font-medium">{summary?.recent_news || 0}건</span>
             </div>
           </div>

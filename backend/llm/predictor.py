@@ -1,7 +1,7 @@
 """
 주가 예측 모듈
 
-유사 뉴스 기반 LLM 주가 예측 기능을 제공합니다.
+유사 시장 동향 기반 LLM 주가 예측 기능을 제공합니다.
 """
 import logging
 import json
@@ -561,10 +561,10 @@ class StockPredictor:
 
     def _calculate_similar_news_stats(self, similar_news: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        유사 뉴스 패턴 통계를 계산합니다.
+        유사 시장 동향 패턴 통계를 계산합니다.
 
         Args:
-            similar_news: 유사 뉴스 리스트
+            similar_news: 유사 시장 동향 리스트
 
         Returns:
             통계 정보 딕셔너리
@@ -618,8 +618,8 @@ class StockPredictor:
         예측 프롬프트 생성 (개선 버전)
 
         Args:
-            current_news: 현재 뉴스 정보 {title, content, stock_code}
-            similar_news: 유사 뉴스 리스트 [{title, content, similarity, price_changes}]
+            current_news: 현재 시장 동향 정보 {title, content, stock_code}
+            similar_news: 유사 시장 동향 리스트 [{title, content, similarity, price_changes}]
 
         Returns:
             프롬프트 문자열
@@ -630,10 +630,10 @@ class StockPredictor:
         stock_basic = self._get_stock_info(stock_code) if stock_code else None
         stock_name = stock_basic['name'] if stock_basic else "알 수 없음"
 
-        # 2. 유사 뉴스 통계 계산
+        # 2. 유사 시장 동향 통계 계산
         similar_stats = self._calculate_similar_news_stats(similar_news)
 
-        # 3. 유사 뉴스 요약
+        # 3. 유사 시장 동향 요약
         similar_cases = []
         for i, news in enumerate(similar_news, 1):
             price_info = news.get("price_changes", {})
@@ -650,12 +650,12 @@ class StockPredictor:
 """
             )
 
-        similar_section = "\n".join(similar_cases) if similar_cases else "유사 뉴스 없음"
+        similar_section = "\n".join(similar_cases) if similar_cases else "유사 시장 동향 없음"
 
         # 4. 유사 패턴 통계 섹션
         pattern_stats = similar_stats['pattern_stats']
         stats_section = f"""
-## 📊 유사 뉴스 패턴 통계 (총 {similar_stats['count']}건, 평균 유사도: {similar_stats['avg_similarity']:.1%})
+## 📊 유사 시장 동향 패턴 통계 (총 {similar_stats['count']}건, 평균 유사도: {similar_stats['avg_similarity']:.1%})
 
 """
         for period, stats in pattern_stats.items():
@@ -931,13 +931,13 @@ class StockPredictor:
 
         # 9. 최종 프롬프트 생성
         prompt = f"""
-당신은 한국 주식 시장의 **뉴스 영향도 분석가**입니다.
-뉴스, 공시, 과거 패턴, 현재 주가를 종합적으로 분석하여 뉴스가 기업과 주가에 미치는 영향을 평가하세요.
-가격을 예측하는 것이 아니라, 뉴스의 영향력을 분석하는 것이 당신의 역할입니다.
+당신은 한국 주식 시장의 **시장 동향 영향도 분석가**입니다.
+시장 동향, 공시, 과거 패턴, 현재 주가를 종합적으로 분석하여 시장 동향이 기업과 주가에 미치는 영향을 평가하세요.
+가격을 예측하는 것이 아니라, 시장 동향의 영향력을 분석하는 것이 당신의 역할입니다.
 
 ---
 
-## 현재 뉴스
+## 현재 시장 동향
 **종목**: {stock_name} ({stock_code})
 **제목**: {current_news.get('title', 'N/A')}
 **내용**: {current_news.get('content', 'N/A')[:300]}...
@@ -954,30 +954,30 @@ class StockPredictor:
 {stats_section}
 ---
 
-## 유사한 과거 뉴스와 실제 주가 변동
+## 유사한 과거 시장 동향과 실제 주가 변동
 {similar_section}
 
 ---
 
 ## 분석 요청사항
 
-당신의 역할은 **뉴스가 기업과 주가에 미치는 영향도를 분석**하는 것입니다.
-가격을 직접 예측하지 말고, 뉴스의 영향력을 다각도로 평가하세요.
+당신의 역할은 **시장 동향이 기업과 주가에 미치는 영향도를 분석**하는 것입니다.
+가격을 직접 예측하지 말고, 시장 동향의 영향력을 다각도로 평가하세요.
 
-1. **감성 방향 및 점수**: 뉴스의 전반적인 감성을 평가하세요
+1. **감성 방향 및 점수**: 시장 동향의 전반적인 감성을 평가하세요
    - positive (긍정적 영향), negative (부정적 영향), neutral (중립적)
    - sentiment_score: -1.0 (매우 부정적) ~ +1.0 (매우 긍정적)
 
-2. **영향 수준**: 이 뉴스가 주가에 미칠 영향의 크기를 평가하세요
-   - low: 경미한 영향 (일상적 뉴스, 작은 변화)
+2. **영향 수준**: 이 시장 동향이 주가에 미칠 영향의 크기를 평가하세요
+   - low: 경미한 영향 (일상적 사항, 작은 변화)
    - medium: 중간 영향 (사업 일부에 영향)
    - high: 큰 영향 (핵심 사업에 영향, 시장 주목)
    - critical: 매우 큰 영향 (기업 전체에 영향, 게임 체인저)
 
-3. **관련성 점수**: 이 뉴스가 해당 기업의 핵심 사업과 얼마나 관련 있는지 평가하세요
+3. **관련성 점수**: 이 시장 동향이 해당 기업의 핵심 사업과 얼마나 관련 있는지 평가하세요
    - relevance_score: 0.0 (무관) ~ 1.0 (핵심 사업 직접 관련)
 
-4. **긴급도**: 시장이 이 뉴스에 얼마나 빠르게 반응할지 평가하세요
+4. **긴급도**: 시장이 이 시장 동향에 얼마나 빠르게 반응할지 평가하세요
    - routine: 일상적 (시장 반응 미미)
    - notable: 주목할 만한 (점진적 반응)
    - urgent: 긴급 (빠른 반응 예상)
@@ -1015,13 +1015,17 @@ class StockPredictor:
 ```
 
 **중요 지침**:
-- **sentiment_score**: 뉴스 내용의 긍정/부정 정도를 -1.0 ~ +1.0 범위로 평가하세요
-- **impact_level**: 뉴스가 주가에 미칠 영향의 절대적 크기를 평가하세요
+- **sentiment_score**: 시장 동향 내용의 긍정/부정 정도를 -1.0 ~ +1.0 범위로 평가하세요
+- **impact_level**: 시장 동향이 주가에 미칠 영향의 절대적 크기를 평가하세요
 - **relevance_score**: 기업의 핵심 사업과의 관련도를 0.0 ~ 1.0 범위로 평가하세요
 - **urgency_level**: 시장의 반응 속도를 평가하세요 (routine < notable < urgent < breaking)
 - **impact_analysis**: 각 측면에서 구체적이고 정량적인 분석을 제공하세요
-- **pattern_analysis**: 유사 뉴스 통계를 참고용으로 포함하되, 직접적인 가격 예측은 하지 마세요
+- **pattern_analysis**: 유사 시장 동향 통계를 참고용으로 포함하되, 직접적인 가격 예측은 하지 마세요
 - **reasoning**: 왜 이러한 영향도 평가를 내렸는지 구체적으로 설명하세요
+
+**⚠️ 출력 시 금지 용어**:
+- "뉴스", "언론", "기사", "언론사" 등의 용어 사용 금지
+- 대신 "시장 동향", "시장 정보", "공시 정보", "시장 분석", "동향 자료" 등 중립적 표현 사용
 """
         return prompt.strip()
 

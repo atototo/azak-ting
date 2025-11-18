@@ -301,7 +301,7 @@ class InvestmentReportGenerator:
             if pattern_counts[key] > 0:
                 pattern_avg[key] = round(pattern_sums[key] / pattern_counts[key], 2)
 
-        # 최근 뉴스 영향도 분석 (최대 5건)
+        # 최근 시장 동향 영향도 분석 (최대 5건)
         recent_news_analysis = []
         for pred in predictions[:5]:
             recent_news_analysis.append({
@@ -453,18 +453,18 @@ class InvestmentReportGenerator:
 ## 현재 상황 ({time_ctx['today']})
 - 현재가: {stock_info['current_price']:,}원 (전일 대비 {stock_info['change_rate']:+.2f}%) {f"" if stock_info['current_price'] else "현재가 정보 없음"}
 - 분석 기간: {time_ctx['analysis_period']}
-- 분석된 뉴스: 총 {stats['total_predictions']}건
+- 분석된 시장 동향: 총 {stats['total_predictions']}건
 
 ## 📊 한국투자증권 실시간 시장 데이터
 {self._format_kis_market_data(kis_data) if kis_data else "실시간 시장 데이터 없음"}
 
-## 뉴스 영향도 분석 요약
+## 시장 동향 영향도 분석 요약
 - 감성 분포: 긍정 {stats['sentiment_distribution']['positive']}건, 부정 {stats['sentiment_distribution']['negative']}건, 중립 {stats['sentiment_distribution']['neutral']}건
 - 영향도 분포: 높음 {stats['impact_distribution']['high']}건, 중간 {stats['impact_distribution']['medium']}건, 낮음 {stats['impact_distribution']['low']}건
 - 평균 감성 점수: {stats['avg_sentiment_score']:.2f} (범위: -1.0 ~ 1.0, 양수=긍정)
 - 평균 관련성: {stats['avg_relevance_score']:.2f} (범위: 0.0 ~ 1.0)
 
-## 과거 패턴 분석 (유사 뉴스 기반 평균 변동률)
+## 과거 패턴 분석 (유사 시장 동향 기반 평균 변동률)
 - T+1일: {f"{stats['pattern_analysis_avg']['avg_1d']:+.1f}%" if stats['pattern_analysis_avg']['avg_1d'] is not None else 'N/A'}
 - T+3일: {f"{stats['pattern_analysis_avg']['avg_3d']:+.1f}%" if stats['pattern_analysis_avg']['avg_3d'] is not None else 'N/A'}
 - T+5일: {f"{stats['pattern_analysis_avg']['avg_5d']:+.1f}%" if stats['pattern_analysis_avg']['avg_5d'] is not None else 'N/A'}
@@ -502,19 +502,23 @@ class InvestmentReportGenerator:
 
 **중요 지침**:
 1. **한국투자증권 실시간 데이터 우선 활용**: 호가, 투자자 매매동향, PER/PBR 등 실제 시장 데이터를 최우선으로 분석
-2. **뉴스 영향도를 가격 예측에 반영**: 긍정 뉴스 많으면 상승, 부정 뉴스 많으면 하락 예상
-3. **기술적 지표와 결합**: 단순히 뉴스만이 아닌, 기술적 분석도 함께 고려
+2. **시장 동향 영향도를 가격 예측에 반영**: 긍정 동향 많으면 상승, 부정 동향 많으면 하락 예상
+3. **기술적 지표와 결합**: 단순히 시장 동향만이 아닌, 기술적 분석도 함께 고려
 4. **투자자 동향 반영**: 외국인/기관/개인의 매매 패턴을 투자 전략에 반영
 5. **호가 압력 분석**: 매수/매도 잔량 비율로 단기 방향성 예측
 6. 구체적인 **수치와 기간**을 명시 (목표가, 손절가, 예상 수익률)
 7. 투자자가 **오늘 결정**을 내릴 수 있도록 작성
 8. 리스크와 기회는 각각 **최대 3개**까지만
 9. **간결하고 명확**하게 (불필요한 수식어 제거)
+
+**⚠️ 출력 시 금지 용어**:
+- "뉴스", "언론", "기사", "언론사" 등의 용어 사용 금지
+- 대신 "시장 동향", "시장 정보", "공시 정보", "시장 분석", "동향 자료" 등 중립적 표현 사용
 """
         return prompt.strip()
 
     def _format_recent_news(self, recent_news: List[Dict[str, Any]]) -> str:
-        """최근 뉴스 영향도 분석 포맷팅"""
+        """최근 시장 동향 영향도 분석 포맷팅"""
         lines = []
         for i, news in enumerate(recent_news, 1):
             sentiment_kr = {"positive": "긍정", "negative": "부정", "neutral": "중립"}.get(news["sentiment_direction"], news["sentiment_direction"])
@@ -820,7 +824,7 @@ class InvestmentReportGenerator:
     def _empty_report(self) -> Dict[str, Any]:
         """빈 리포트 반환"""
         return {
-            "overall_summary": "분석된 뉴스가 없습니다.",
+            "overall_summary": "분석된 시장 동향이 없습니다.",
             "short_term_scenario": None,
             "medium_term_scenario": None,
             "long_term_scenario": None,
@@ -964,11 +968,11 @@ def build_adaptive_analysis_prompt(context: Dict[str, Any]) -> str:
 {_format_technical_summary(technical_indicators)}
 """
 
-    # 6. 뉴스 (최근 5건)
+    # 6. 시장 동향 (최근 5건)
     if data_sources.get("news"):
         news = context.get("news", [])
         prompt += f"""
-### 📰 최근 뉴스 ({len(news)}건)
+### 📊 최근 시장 동향 ({len(news)}건)
 """
         for idx, n in enumerate(news[:5], 1):
             title = n.get('title', 'N/A')
@@ -989,7 +993,7 @@ def build_adaptive_analysis_prompt(context: Dict[str, Any]) -> str:
   "overall_summary": "현재 시점에서 이 종목에 대한 전체적인 판단 (2-3문장, 핵심만)",
   "short_term_scenario": "단기 투자자(1일~1주) 관점: 재무비율 최근 분기 실적, 현재 주가 수준, 투자자 수급(있으면) 기반 구체적 매매 전략. 목표가/손절가 명시.",
   "medium_term_scenario": "중기 투자자(1주~1개월) 관점: 최근 3개 분기 재무 추이, 업종 위치, 기술적 지표(있으면) 기반 전략. 구체적 목표가와 예상 수익률.",
-  "long_term_scenario": "장기 투자자(1개월 이상) 관점: 연간 ROE/EPS 추이, 산업 전망, 뉴스 기반 이벤트 분석. 펀더멘털 중심 장기 보유 전략.",
+  "long_term_scenario": "장기 투자자(1개월 이상) 관점: 연간 ROE/EPS 추이, 산업 전망, 시장 동향 기반 이벤트 분석. 펀더멘털 중심 장기 보유 전략.",
   "risk_factors": ["리스크 요인 1 (구체적)", "리스크 요인 2", "리스크 요인 3"],
   "opportunity_factors": ["기회 요인 1 (구체적)", "기회 요인 2", "기회 요인 3"],
   "recommendation": "최종 추천: 명확한 액션(매수/관망/매도) + 간결한 이유 (1-2문장)",
@@ -1009,7 +1013,7 @@ def build_adaptive_analysis_prompt(context: Dict[str, Any]) -> str:
 **중요 지침**:
 1. **재무비율 우선 활용**: ROE, EPS, 부채비율 추이를 핵심 지표로 분석
 2. **투자자 수급 반영**: 외국인/기관 순매수 패턴을 투자 전략에 반영 (데이터 있을 시)
-3. **뉴스 영향도 고려**: 최근 뉴스의 감성/영향도를 sentiment에 반영 (데이터 있을 시)
+3. **시장 동향 영향도 고려**: 최근 시장 동향의 감성/영향도를 sentiment에 반영 (데이터 있을 시)
 4. **기술적 지표 결합**: 이동평균, RSI 등 기술적 분석 활용 (데이터 있을 시)
 5. **구체적인 수치와 기간 명시**: 목표가, 손절가, 예상 수익률을 숫자로 제시
 6. **현실적 목표가 설정**: 현재가 대비 ±10~30% 범위 내에서 합리적으로
@@ -1017,10 +1021,14 @@ def build_adaptive_analysis_prompt(context: Dict[str, Any]) -> str:
 8. **간결하고 명확하게** (불필요한 수식어 제거)
 9. **누락 데이터 처리**: limitations에 명시하고, 가용 데이터만으로 최선의 분석 제공
 
+**⚠️ 출력 시 금지 용어**:
+- "뉴스", "언론", "기사", "언론사" 등의 용어 사용 금지
+- 대신 "시장 동향", "시장 정보", "공시 정보", "시장 분석", "동향 자료" 등 중립적 표현 사용
+
 **데이터 우선순위**:
 - Tier 1 (필수): 현재가, 재무비율, 상품정보
 - Tier 2 (중요): 투자자 수급, 기술적 지표
-- Tier 3 (선택): 뉴스, 공시
+- Tier 3 (선택): 시장 동향, 공시
 """
 
     return prompt

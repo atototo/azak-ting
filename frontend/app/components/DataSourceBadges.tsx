@@ -12,21 +12,21 @@ interface DataSourceBadgesProps {
 }
 
 const DATA_SOURCE_LABELS: Record<keyof DataSources, string> = {
-  market_data: '시장 데이터',
+  market_data: '주가·거래량',
   investor_trading: '투자자 수급',
-  financial_ratios: '재무비율',
-  product_info: '상품정보',
+  financial_ratios: '재무 지표',
+  product_info: '기업 정보',
   technical_indicators: '기술적 지표',
-  news: '뉴스',
+  news: '시장 동향',
 };
 
 const DATA_SOURCE_TOOLTIPS: Record<keyof DataSources, string> = {
-  market_data: '현재가, 거래량, 전일대비 등',
-  investor_trading: '외국인/기관 매매 동향',
-  financial_ratios: 'ROE, EPS, 부채비율 등 재무 지표',
-  product_info: '업종, 위험등급 등 기본 정보',
-  technical_indicators: '이동평균, RSI, MACD 등',
-  news: '최근 뉴스 및 공시 정보',
+  market_data: '주가, 거래량, 호가 등 가격 정보',
+  investor_trading: '외국인/기관/개인 순매수 동향',
+  financial_ratios: 'ROE, PER, EPS, 부채비율 등',
+  product_info: '업종, 위험등급 등 기업 기본정보',
+  technical_indicators: '이동평균, RSI, 볼린저밴드 등',
+  news: 'AI 기반 시장 동향 분석',
 };
 
 export const DataSourceBadges: React.FC<DataSourceBadgesProps> = ({ dataSources }) => {
