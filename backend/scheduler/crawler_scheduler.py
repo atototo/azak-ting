@@ -693,7 +693,7 @@ class CrawlerScheduler:
         """
         종목별 투자 리포트 생성.
         하루 3번 실행됩니다 (09:15, 13:00, 15:40).
-        Priority 1-2 종목만 대상.
+        모든 활성 종목 대상.
         """
         logger.info("=" * 60)
         logger.info("📝 종목별 투자 리포트 생성 시작")
@@ -702,38 +702,36 @@ class CrawlerScheduler:
         db = SessionLocal()
 
         try:
-            from backend.services.stock_analysis_service import update_stock_analysis_summary
+            from backend.services.stock_analysis_service import generate_stock_report
 
-            # Priority 1-2 종목만 조회
-            priority_stocks = db.query(Stock).filter(
-                Stock.is_active == True,
-                Stock.priority <= 2
+            # 모든 활성 종목 조회 (Priority 필터 제거)
+            active_stocks = db.query(Stock).filter(
+                Stock.is_active == True
             ).all()
 
-            logger.info(f"📊 리포트 생성 대상: {len(priority_stocks)}개 종목 (Priority 1-2)")
+            logger.info(f"📊 리포트 생성 대상: {len(active_stocks)}개 종목 (all active stocks)")
 
             success_count = 0
             failed_count = 0
 
-            for stock in priority_stocks:
+            for stock in active_stocks:
                 try:
-                    # 리포트 생성 (force_update=True로 항상 새로 생성)
-                    report = await update_stock_analysis_summary(
+                    # DB 기반 리포트 생성 (전체 모델)
+                    reports = await generate_stock_report(
                         stock_code=stock.code,
                         db=db,
                         force_update=True
                     )
 
-                    if report:
+                    if reports:
                         success_count += 1
                         logger.info(
                             f"  ✅ {stock.name} ({stock.code}): "
-                            f"기준가 {report.base_price:,.0f}원, "
-                            f"목표가 {report.short_term_target_price:,.0f}원"
+                            f"{len(reports)}개 모델 리포트 생성 완료"
                         )
                     else:
                         failed_count += 1
-                        logger.warning(f"  ⚠️  {stock.name} ({stock.code}) 리포트 생성 실패")
+                        logger.warning(f"  ⚠️  {stock.name} ({stock.code}) 리포트 생성 실패 (데이터 부족)")
 
                 except Exception as e:
                     failed_count += 1

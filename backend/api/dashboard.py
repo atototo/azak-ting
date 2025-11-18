@@ -183,18 +183,18 @@ async def force_update_single_stock(
         업데이트 결과 (성공 여부, 메시지)
     """
     try:
-        from backend.services.stock_analysis_service import update_stock_analysis_summary
+        from backend.services.stock_analysis_service import generate_stock_report
 
         logger.info(f"종목 {stock_code} 리포트 강제 업데이트 시작")
 
-        result = await update_stock_analysis_summary(
+        reports = await generate_stock_report(
             stock_code,
             db,
             force_update=True
         )
 
-        if result:
-            logger.info(f"✅ 종목 {stock_code} 리포트 업데이트 성공")
+        if reports:
+            logger.info(f"✅ 종목 {stock_code} 리포트 업데이트 성공 ({len(reports)}개 모델)")
 
             # 생성된 리포트 데이터를 직접 반환
             from backend.services.stock_analysis_service import get_stock_analysis_summary
@@ -202,9 +202,9 @@ async def force_update_single_stock(
 
             return {
                 "success": True,
-                "message": f"종목 {stock_code} 리포트가 성공적으로 업데이트되었습니다.",
-                "last_updated": result.last_updated.isoformat() if result.last_updated else None,
-                "prediction_count": result.based_on_prediction_count,
+                "message": f"종목 {stock_code} 리포트가 성공적으로 업데이트되었습니다. ({len(reports)}개 모델)",
+                "last_updated": reports[0].last_updated.isoformat() if reports[0].last_updated else None,
+                "model_count": len(reports),
                 "analysis_summary": updated_summary  # 생성된 리포트 데이터 포함
             }
         else:
@@ -457,7 +457,7 @@ async def force_update_stale_reports(
     """
     try:
         from backend.db.models.stock_analysis import StockAnalysisSummary
-        from backend.services.stock_analysis_service import update_stock_analysis_summary
+        from backend.services.stock_analysis_service import generate_stock_report
         from backend.utils.stock_mapping import get_stock_mapper
         import asyncio
 
@@ -509,18 +509,18 @@ async def force_update_stale_reports(
 
         for stock in stale_stocks:
             try:
-                result = await update_stock_analysis_summary(
+                reports = await generate_stock_report(
                     stock['code'],
                     db,
                     force_update=True
                 )
 
-                if result:
+                if reports:
                     success_count += 1
-                    logger.info(f"✅ {stock['name']} ({stock['code']}) 업데이트 성공")
+                    logger.info(f"✅ {stock['name']} ({stock['code']}) 업데이트 성공 ({len(reports)}개 모델)")
                 else:
                     fail_count += 1
-                    logger.warning(f"❌ {stock['name']} ({stock['code']}) 업데이트 실패")
+                    logger.warning(f"❌ {stock['name']} ({stock['code']}) 업데이트 실패 (데이터 부족)")
 
                 # API rate limit 고려
                 await asyncio.sleep(0.5)

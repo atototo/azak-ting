@@ -7,9 +7,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel, Field
+import logging
 
 from backend.db.session import get_db
 from backend.db.models.stock import Stock
+from backend.services.stock_analysis_service import trigger_initial_analysis
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin/stocks", tags=["stock-management"])
 
@@ -49,14 +53,16 @@ class StockListResponse(BaseModel):
 
 # API Endpoints
 @router.post("", response_model=StockResponse, status_code=201)
-def create_stock(stock: StockCreate, db: Session = Depends(get_db)):
+async def create_stock(stock: StockCreate, db: Session = Depends(get_db)):
     """
-    새 종목을 추가합니다.
+    새 종목을 추가하고 즉시 분석을 실행합니다.
 
     - **code**: 종목 코드 (6자리, 예: 005930)
     - **name**: 종목명 (예: 삼성전자)
-    - **priority**: 우선순위 1~5 (낮을수록 우선, 기본값: 5)
+    - **priority**: 우선순위 1~5 (낮을수록 우선, 기본값: 5, deprecated)
     """
+    logger.info(f"📝 Registering stock: {stock.code} ({stock.name})")
+
     # 중복 체크
     existing = db.query(Stock).filter(Stock.code == stock.code).first()
     if existing:
@@ -69,13 +75,23 @@ def create_stock(stock: StockCreate, db: Session = Depends(get_db)):
     new_stock = Stock(
         code=stock.code,
         name=stock.name,
-        priority=stock.priority,
+        priority=stock.priority,  # deprecated, 하지만 하위 호환성 유지
         is_active=True
     )
 
     db.add(new_stock)
     db.commit()
     db.refresh(new_stock)
+
+    logger.info(f"✅ Stock saved: {stock.code}")
+
+    # 즉시 초기 분석 실행 (신규)
+    try:
+        await trigger_initial_analysis(stock.code, db)
+        logger.info(f"✅ Initial analysis triggered for {stock.code}")
+    except Exception as e:
+        logger.error(f"❌ Initial analysis failed for {stock.code}: {e}")
+        # 실패해도 종목 등록은 유지
 
     return new_stock
 

@@ -6,6 +6,7 @@ Stock Analysis Service
 import logging
 import json
 import re
+import asyncio
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -13,9 +14,12 @@ from sqlalchemy import func
 
 from backend.db.models.prediction import Prediction
 from backend.db.models.stock_analysis import StockAnalysisSummary
-from backend.db.models.stock import StockPrice
+from backend.db.models.stock import StockPrice, Stock
 from backend.db.models.model import Model
 from backend.db.models.ab_test_config import ABTestConfig
+from backend.db.models.market_data import StockCurrentPrice, InvestorTrading
+from backend.db.models.financial import FinancialRatio, ProductInfo
+from backend.db.models.news import NewsArticle
 from backend.llm.investment_report import get_report_generator
 from backend.utils.stock_mapping import get_stock_mapper
 from backend.utils.market_time import (
@@ -24,9 +28,401 @@ from backend.utils.market_time import (
     get_price_threshold,
     get_direction_threshold
 )
+from backend.crawlers.kis_client import KISClient
+from backend.services.kis_data_service import save_product_info, save_financial_ratios
 
 
 logger = logging.getLogger(__name__)
+
+
+async def trigger_initial_analysis(stock_code: str, db: Session):
+    """
+    신규 종목 등록 시 즉시 분석 실행
+
+    1. KIS API로 초기 데이터 수집 (1회만)
+    2. DB에 저장
+    3. 초기 리포트 생성
+
+    Args:
+        stock_code: 종목코드
+        db: DB 세션
+
+    Raises:
+        Exception: 치명적 오류 시 (로그만 기록, re-raise 안 함)
+    """
+    logger.info(f"🚀 Triggering initial analysis for {stock_code}")
+
+    try:
+        client = KISClient()
+
+        # KIS API 호출 (초기 1회만)
+        tasks = [
+            client.get_current_price(stock_code),
+            client.get_product_info(stock_code),
+            client.get_financial_ratios(stock_code, div_cls_code="0")
+        ]
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        current_price_data = results[0] if not isinstance(results[0], Exception) else None
+        product_info_data = results[1] if not isinstance(results[1], Exception) else None
+        financial_ratios_data = results[2] if not isinstance(results[2], Exception) else None
+
+        # DB 저장 (우아한 실패 처리)
+        if product_info_data:
+            save_product_info(db, stock_code, product_info_data)
+            logger.info(f"✅ Saved product info for {stock_code}")
+
+        if financial_ratios_data:
+            save_financial_ratios(db, stock_code, financial_ratios_data)
+            logger.info(f"✅ Saved financial ratios for {stock_code}")
+
+        # 초기 리포트 생성 (US-004: DB 기반, 전체 모델)
+        reports = await generate_stock_report(stock_code, db)
+
+        if reports:
+            logger.info(f"✅ Initial DB-based reports generated for {stock_code} ({len(reports)} models)")
+        else:
+            # DB 데이터도 없어서 리포트 생성 실패 - Placeholder 생성
+            logger.warning(f"⚠️ No data available for {stock_code}, creating placeholder report")
+            await create_placeholder_report(
+                stock_code, db,
+                error_msg="초기 데이터 수집 대기 중 - KIS API 데이터 수집 후 재시도 예정"
+            )
+
+    except Exception as e:
+        logger.error(f"❌ Initial analysis failed for {stock_code}: {e}")
+        # Placeholder 리포트 생성 시도
+        try:
+            await create_placeholder_report(stock_code, db, error_msg=str(e))
+        except Exception as e2:
+            logger.error(f"❌ Placeholder report failed for {stock_code}: {e2}")
+
+
+async def generate_stock_report(
+    stock_code: str,
+    db: Session,
+    force_update: bool = False
+) -> List[StockAnalysisSummary]:
+    """
+    종목 리포트 생성 - DB 기반, 전체 모델 지원 (US-004 통합 버전)
+
+    프로세스:
+    1. DB에서 컨텍스트 구축 (현재가, 투자자수급, 재무비율, 상품정보, 뉴스)
+    2. 데이터 가용성 확인
+    3. 적응형 프롬프트 생성
+    4. 모든 활성 모델에 대해 리포트 생성
+    5. 메타데이터 포함 (data_sources_used, limitations, confidence_level)
+
+    Args:
+        stock_code: 종목코드
+        db: DB 세션
+        force_update: 강제 업데이트 (기본값: False)
+
+    Returns:
+        생성된 StockAnalysisSummary 리스트 (각 모델별 1개씩)
+    """
+    logger.info(f"📊 Generating stock report for {stock_code}")
+
+    try:
+        # 1. DB에서 컨텍스트 구축
+        context = await build_analysis_context_from_db(stock_code, db)
+
+        # 2. 데이터 가용성 확인
+        data_sources = context.get("data_sources", {})
+        available_count = sum(1 for v in data_sources.values() if v)
+
+        if available_count == 0:
+            logger.warning(f"No data available for {stock_code}")
+            return []
+
+        # 3. 적응형 프롬프트 생성
+        from backend.llm.investment_report import build_adaptive_analysis_prompt
+        prompt = build_adaptive_analysis_prompt(context)
+
+        # 4. 모든 활성 모델 조회
+        active_models: List[Model] = db.query(Model).filter(Model.is_active == True).all()
+
+        if not active_models:
+            logger.error("No active LLM model found")
+            return []
+
+        logger.info(f"📋 Generating reports for {len(active_models)} active models")
+
+        # 5. 각 모델별로 리포트 생성
+        from backend.llm.investment_report import get_report_generator
+        generator = get_report_generator()
+
+        created_summaries: List[StockAnalysisSummary] = []
+        failed_models = []
+
+        for model in active_models:
+            try:
+                logger.info(f"  🔄 Generating report with {model.name} ({model.provider})")
+
+                # LLM 클라이언트 생성
+                client = generator._create_client(model.provider)
+
+                messages = [
+                    {
+                        "role": "system",
+                        "content": "당신은 한국 주식 시장의 베테랑 애널리스트입니다. DB 데이터 기반으로 명확하고 실용적인 투자 리포트를 작성합니다.",
+                    },
+                    {"role": "user", "content": prompt},
+                ]
+
+                kwargs = {
+                    "model": model.model_identifier,
+                    "messages": messages,
+                    "temperature": 0.4,
+                    "max_tokens": 1000,
+                }
+
+                if model.provider != "openrouter":
+                    kwargs["response_format"] = {"type": "json_object"}
+
+                response = client.chat.completions.create(**kwargs)
+                result_text = response.choices[0].message.content
+
+                # OpenRouter JSON 추출
+                if model.provider == "openrouter":
+                    result_text = _extract_openrouter_json(result_text)
+
+                # JSON 파싱
+                report_data = json.loads(result_text)
+
+                # DB에 저장
+                summary = StockAnalysisSummary(
+                    stock_code=stock_code,
+                    model_id=model.id,
+                    overall_summary=report_data.get("overall_summary"),
+                    short_term_scenario=report_data.get("short_term_scenario"),
+                    medium_term_scenario=report_data.get("medium_term_scenario"),
+                    long_term_scenario=report_data.get("long_term_scenario"),
+                    risk_factors=json.dumps(report_data.get("risk_factors", [])) if isinstance(report_data.get("risk_factors"), list) else report_data.get("risk_factors"),
+                    opportunity_factors=json.dumps(report_data.get("opportunity_factors", [])) if isinstance(report_data.get("opportunity_factors"), list) else report_data.get("opportunity_factors"),
+                    recommendation=report_data.get("recommendation"),
+                    confidence_level=report_data.get("confidence_level", "medium"),
+                    data_sources_used=data_sources,
+                    limitations=report_data.get("limitations", []),
+                    data_completeness_score=available_count / 6.0,  # 6개 데이터 소스
+                    total_predictions=0,  # DB 기반 리포트는 예측 아님
+                    based_on_prediction_count=0,
+                    # 가격 목표치 (있으면 포함)
+                    base_price=report_data.get("price_targets", {}).get("base_price"),
+                    short_term_target_price=report_data.get("price_targets", {}).get("short_term_target"),
+                    short_term_support_price=report_data.get("price_targets", {}).get("short_term_support"),
+                    medium_term_target_price=report_data.get("price_targets", {}).get("medium_term_target"),
+                    medium_term_support_price=report_data.get("price_targets", {}).get("medium_term_support"),
+                    long_term_target_price=report_data.get("price_targets", {}).get("long_term_target"),
+                )
+
+                db.add(summary)
+                created_summaries.append(summary)
+                logger.info(f"  ✅ {model.name} report created (confidence={summary.confidence_level})")
+
+            except Exception as model_error:
+                logger.error(
+                    f"  ❌ {model.name} report generation failed: {model_error}",
+                    exc_info=True
+                )
+                failed_models.append(model.name)
+                continue
+
+        # 모든 모델 실패 시
+        if not created_summaries:
+            logger.error(f"❌ All models failed for {stock_code} (failed: {', '.join(failed_models)})")
+            return []
+
+        # DB 커밋
+        db.commit()
+        for summary in created_summaries:
+            db.refresh(summary)
+
+        logger.info(f"✅ Stock report completed: {len(created_summaries)}/{len(active_models)} models succeeded")
+        if failed_models:
+            logger.warning(f"⚠️  Failed models: {', '.join(failed_models)}")
+
+        return created_summaries
+
+    except Exception as e:
+        logger.error(f"Failed to generate stock report for {stock_code}: {e}", exc_info=True)
+        db.rollback()
+        return []
+
+
+async def generate_db_based_report(stock_code: str, db: Session) -> Optional[StockAnalysisSummary]:
+    """
+    [DEPRECATED] 하위 호환성을 위해 유지
+    generate_stock_report() 사용 권장
+    """
+    reports = await generate_stock_report(stock_code, db)
+    return reports[0] if reports else None
+
+
+async def create_placeholder_report(stock_code: str, db: Session, error_msg: str):
+    """
+    오류 발생 시 placeholder 리포트 생성
+
+    데이터 없이도 종목이 "추적 중" 목록에 나타나도록 함
+    """
+    summary = StockAnalysisSummary(
+        stock_code=stock_code,
+        overall_summary="데이터 수집 중입니다. 잠시 후 다시 확인해주세요.",
+        recommendation="보류",
+        confidence_level="low",
+        data_sources_used={
+            "market_data": False,
+            "investor_trading": False,
+            "financial_ratios": False,
+            "product_info": False,
+            "news": False
+        },
+        limitations=[f"초기 데이터 수집 실패: {error_msg}"]
+    )
+
+    db.add(summary)
+    db.commit()
+    logger.info(f"📝 Placeholder report created for {stock_code}")
+
+
+async def build_analysis_context_from_db(stock_code: str, db: Session) -> Dict[str, Any]:
+    """
+    DB 쿼리만으로 분석 컨텍스트 생성 (KIS API 호출 0회)
+
+    Returns:
+        {
+            "stock_code": "005930",
+            "stock_name": "삼성전자",
+            "current_price": {...},
+            "investor_trading": [...],
+            "financial_ratios": [...],
+            "product_info": {...},
+            "technical_indicators": {...},
+            "news": [...],
+            "data_sources": {
+                "market_data": True,
+                "investor_trading": True,
+                "financial_ratios": True,
+                "product_info": True,
+                "technical_indicators": False,
+                "news": True
+            }
+        }
+    """
+    logger.debug(f"Building analysis context from DB for {stock_code}")
+
+    context = {
+        "stock_code": stock_code,
+        "data_sources": {}
+    }
+
+    # Stock 기본 정보
+    stock = db.query(Stock).filter(Stock.code == stock_code).first()
+    if stock:
+        context["stock_name"] = stock.name
+
+    # Tier 1: DB 쿼리 (API 호출 없음)
+
+    # 1. 현재가
+    current_price = db.query(StockCurrentPrice).filter(
+        StockCurrentPrice.stock_code == stock_code
+    ).order_by(StockCurrentPrice.created_at.desc()).first()
+
+    if current_price:
+        context["current_price"] = {
+            "current_price": current_price.stck_prpr,
+            "change_rate": current_price.prdy_ctrt,
+            "volume": current_price.acml_vol,
+            "per": current_price.per,
+            "pbr": current_price.pbr,
+            "eps": current_price.eps,
+            "bps": current_price.bps,
+            "market_cap": current_price.hts_avls,
+        }
+    else:
+        context["current_price"] = None
+    context["data_sources"]["market_data"] = bool(current_price)
+
+    # 2. 투자자 수급 (최근 5일)
+    investor_trading = db.query(InvestorTrading).filter(
+        InvestorTrading.stock_code == stock_code
+    ).order_by(InvestorTrading.date.desc()).limit(5).all()
+
+    if investor_trading:
+        context["investor_trading"] = [{
+            "date": it.date.isoformat() if it.date else None,
+            "foreigner_net": it.frgn_ntby_qty,
+            "institution_net": it.orgn_ntby_qty,
+            "individual_net": it.prsn_ntby_qty,
+        } for it in investor_trading]
+    else:
+        context["investor_trading"] = []
+    context["data_sources"]["investor_trading"] = bool(investor_trading)
+
+    # 3. 재무비율 (최근 3년)
+    financial_ratios = db.query(FinancialRatio).filter(
+        FinancialRatio.stock_code == stock_code
+    ).order_by(FinancialRatio.stac_yymm.desc()).limit(3).all()
+
+    if financial_ratios:
+        context["financial_ratios"] = [{
+            "stac_yymm": fr.stac_yymm,
+            "roe_val": fr.roe_val,
+            "eps": fr.eps,
+            "bps": fr.bps,
+            "lblt_rate": fr.lblt_rate,
+        } for fr in financial_ratios]
+    else:
+        context["financial_ratios"] = []
+    context["data_sources"]["financial_ratios"] = bool(financial_ratios)
+
+    # 4. 상품정보
+    product_info = db.query(ProductInfo).filter(
+        ProductInfo.stock_code == stock_code
+    ).first()
+
+    if product_info:
+        context["product_info"] = {
+            "prdt_name": product_info.prdt_name,
+            "prdt_clsf_name": product_info.prdt_clsf_name,
+            "prdt_risk_grad_cd": product_info.prdt_risk_grad_cd,
+        }
+    else:
+        context["product_info"] = None
+    context["data_sources"]["product_info"] = bool(product_info)
+
+    # Tier 2: 계산 (DB 데이터 기반)
+    # 기술적 지표는 일봉 데이터가 있을 때만 계산
+    technical_indicators = None
+    try:
+        from backend.utils.technical_indicators import calculate_technical_indicators
+        technical_indicators = calculate_technical_indicators(stock_code, db)
+    except Exception as e:
+        logger.debug(f"Technical indicators unavailable for {stock_code}: {e}")
+
+    context["technical_indicators"] = technical_indicators
+    context["data_sources"]["technical_indicators"] = bool(technical_indicators)
+
+    # Tier 3: 선택 (뉴스)
+    news = db.query(NewsArticle).filter(
+        NewsArticle.stock_code == stock_code
+    ).order_by(NewsArticle.published_at.desc()).limit(10).all()
+
+    if news:
+        context["news"] = [{
+            "title": n.title,
+            "content": n.content,
+            "published_at": n.published_at.isoformat() if n.published_at else None,
+            "source": n.source,
+            "url": n.url,
+        } for n in news]
+    else:
+        context["news"] = []
+    context["data_sources"]["news"] = bool(news)
+
+    logger.debug(f"Context built: {context['data_sources']}")
+    return context
 
 
 async def should_update_report(

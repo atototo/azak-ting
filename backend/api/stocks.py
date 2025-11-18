@@ -214,38 +214,38 @@ async def get_stocks_summary(db: Session = Depends(get_db)):
     """
     종목별 요약 통계
 
-    모든 종목의 뉴스 건수, 알림 건수 등을 반환합니다.
+    모든 활성 종목의 뉴스 건수, 알림 건수 등을 반환합니다.
+    US-004: 뉴스가 없는 종목도 표시 (Placeholder 리포트 포함)
     """
     try:
-        # 종목별 뉴스 건수 집계
+        from backend.db.models.stock import Stock
+
+        # Stock 테이블 기준으로 LEFT JOIN (뉴스 없는 종목도 포함)
         stock_stats = db.query(
-            NewsArticle.stock_code,
-            func.count(NewsArticle.id).label("news_count"),
-            func.count(NewsArticle.notified_at).label("notification_count")
+            Stock.code.label("stock_code"),
+            Stock.name.label("stock_name"),
+            func.coalesce(func.count(NewsArticle.id), 0).label("news_count"),
+            func.coalesce(func.count(NewsArticle.notified_at), 0).label("notification_count"),
+            func.max(NewsArticle.published_at).label("latest_news_date")
+        ).outerjoin(
+            NewsArticle, Stock.code == NewsArticle.stock_code
         ).filter(
-            NewsArticle.stock_code.isnot(None)
+            Stock.is_active == True  # 활성 종목만
         ).group_by(
-            NewsArticle.stock_code
+            Stock.code, Stock.name
         ).all()
 
-        # 종목명 매핑
-        stock_mapper = get_stock_mapper()
-
         result = []
-        for stock_code, news_count, notification_count in stock_stats:
-            stock_name = stock_mapper.get_company_name(stock_code)
-
+        for stock_code, stock_name, news_count, notification_count, latest_news_date in stock_stats:
             result.append({
                 "stock_code": stock_code,
                 "stock_name": stock_name or stock_code,
                 "news_count": news_count,
                 "notification_count": notification_count,
-                # TODO: 평균 신뢰도, 예측 방향 분포 (예측 결과 테이블 필요)
-                "avg_confidence": None,
-                "direction_distribution": None,
+                "latest_news_date": latest_news_date.isoformat() if latest_news_date else None,
             })
 
-        # 뉴스 건수 많은 순으로 정렬
+        # 뉴스 건수 많은 순으로 정렬 (뉴스 0건은 마지막)
         result.sort(key=lambda x: x["news_count"], reverse=True)
 
         return result

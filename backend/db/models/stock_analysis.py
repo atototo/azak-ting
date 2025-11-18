@@ -72,6 +72,12 @@ class StockAnalysisSummary(Base):
     last_updated = Column(DateTime, default=datetime.now, nullable=False)
     based_on_prediction_count = Column(Integer, default=0)
 
+    # 데이터 가용성 메타데이터 (US-004)
+    data_sources_used = Column(JSON, default={}, nullable=True)  # {"market_data": True, "news": False, ...}
+    limitations = Column(JSON, default=[], nullable=True)  # ["뉴스 없음", "재무비율 없음", ...]
+    confidence_level = Column(String(10), default="medium", nullable=True)  # high/medium/low
+    data_completeness_score = Column(Float, default=0.5, nullable=True)  # 0.0 ~ 1.0
+
     def __repr__(self) -> str:
         return (
             f"<StockAnalysisSummary(stock_code='{self.stock_code}', "
