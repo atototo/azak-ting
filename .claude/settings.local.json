@@ -9,9 +9,12 @@
       "Bash(uv run python:*)",
       "mcp__playwright__browser_navigate",
       "Bash(python3:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(docker exec:*)",
+      "Bash(PGPASSWORD=password psql:*)"
     ],
     "deny": [],
     "ask": []
-  }
+  },
+  "includeCoAuthoredBy": false
 }

@@ -26,11 +26,9 @@ export default function AdminStocksPage() {
   const [newStock, setNewStock] = useState({
     code: "",
     name: "",
-    priority: 5,
   });
 
   // 필터 상태
-  const [filterPriority, setFilterPriority] = useState<number | null>(null);
   const [filterActive, setFilterActive] = useState<boolean | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -41,7 +39,6 @@ export default function AdminStocksPage() {
 
       // 쿼리 파라미터 구성
       const params = new URLSearchParams();
-      if (filterPriority !== null) params.append("priority", filterPriority.toString());
       if (filterActive !== null) params.append("is_active", filterActive.toString());
       if (searchQuery) params.append("search", searchQuery);
 
@@ -65,7 +62,7 @@ export default function AdminStocksPage() {
 
   useEffect(() => {
     fetchStocks();
-  }, [filterPriority, filterActive, searchQuery]);
+  }, [filterActive, searchQuery]);
 
   // 종목 추가
   const handleAddStock = async (e: React.FormEvent) => {
@@ -84,7 +81,7 @@ export default function AdminStocksPage() {
       }
 
       // 성공 시 폼 초기화 및 목록 새로고침
-      setNewStock({ code: "", name: "", priority: 5 });
+      setNewStock({ code: "", name: "" });
       setShowAddForm(false);
       fetchStocks();
       alert("종목이 추가되었습니다");
@@ -112,24 +109,6 @@ export default function AdminStocksPage() {
     }
   };
 
-  // 우선순위 변경
-  const handleChangePriority = async (stock: Stock, newPriority: number) => {
-    try {
-      const res = await fetch(`/api/admin/stocks/${stock.code}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ priority: newPriority }),
-      });
-
-      if (!res.ok) {
-        throw new Error("우선순위 변경 실패");
-      }
-
-      fetchStocks();
-    } catch (err: any) {
-      alert(`우선순위 변경 실패: ${err.message}`);
-    }
-  };
 
   // 종목 삭제 (비활성화)
   const handleDeleteStock = async (stock: Stock) => {
@@ -197,7 +176,7 @@ export default function AdminStocksPage() {
         {showAddForm && (
           <div className="bg-white rounded-lg shadow p-6 mb-6">
             <h2 className="text-xl font-bold text-gray-900 mb-4">새 종목 추가</h2>
-            <form onSubmit={handleAddStock} className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <form onSubmit={handleAddStock} className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   종목 코드 (6자리)
@@ -225,24 +204,9 @@ export default function AdminStocksPage() {
                   placeholder="예: 삼성전자"
                   required
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  우선순위 (1~5)
-                </label>
-                <select
-                  value={newStock.priority}
-                  onChange={(e) =>
-                    setNewStock({ ...newStock, priority: parseInt(e.target.value) })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                >
-                  <option value={1}>1 (최우선)</option>
-                  <option value={2}>2</option>
-                  <option value={3}>3</option>
-                  <option value={4}>4</option>
-                  <option value={5}>5 (낮음)</option>
-                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  활성화된 종목은 하루 3회 자동 분석 리포트를 받습니다
+                </p>
               </div>
               <div className="flex items-end">
                 <button
@@ -258,7 +222,7 @@ export default function AdminStocksPage() {
 
         {/* 필터 */}
         <div className="bg-white rounded-lg shadow p-4 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 검색 (종목명 또는 코드)
@@ -270,25 +234,6 @@ export default function AdminStocksPage() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 placeholder="삼성전자 또는 005930"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                우선순위 필터
-              </label>
-              <select
-                value={filterPriority ?? ""}
-                onChange={(e) =>
-                  setFilterPriority(e.target.value ? parseInt(e.target.value) : null)
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              >
-                <option value="">전체</option>
-                <option value={1}>1 (최우선)</option>
-                <option value={2}>2</option>
-                <option value={3}>3</option>
-                <option value={4}>4</option>
-                <option value={5}>5 (낮음)</option>
-              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -336,9 +281,6 @@ export default function AdminStocksPage() {
                         종목명
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        우선순위
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                         상태
                       </th>
                       <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
@@ -354,21 +296,6 @@ export default function AdminStocksPage() {
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900">
                           {stock.name}
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          <select
-                            value={stock.priority}
-                            onChange={(e) =>
-                              handleChangePriority(stock, parseInt(e.target.value))
-                            }
-                            className="px-2 py-1 border border-gray-300 rounded"
-                          >
-                            <option value={1}>1 (최우선)</option>
-                            <option value={2}>2</option>
-                            <option value={3}>3</option>
-                            <option value={4}>4</option>
-                            <option value={5}>5 (낮음)</option>
-                          </select>
                         </td>
                         <td className="px-4 py-3 text-sm">
                           <button

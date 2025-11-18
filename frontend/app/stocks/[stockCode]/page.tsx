@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import NewsImpact from "../../components/NewsImpact";
+import { DataSourceBadges } from "../../components/DataSourceBadges";
 
 interface StockPrice {
   close: number;
@@ -66,6 +67,15 @@ interface DirectionDistribution {
   hold: number;
 }
 
+interface DataSources {
+  market_data: boolean;
+  investor_trading: boolean;
+  financial_ratios: boolean;
+  product_info: boolean;
+  technical_indicators: boolean;
+  news: boolean;
+}
+
 interface SingleModelSummary {
   overall_summary: string;
   short_term_scenario?: string | null;
@@ -74,6 +84,11 @@ interface SingleModelSummary {
   risk_factors: string[];
   opportunity_factors: string[];
   recommendation?: string | null;
+  // US-004 메타데이터
+  data_sources_used?: DataSources;
+  limitations?: string[];
+  confidence_level?: 'high' | 'medium' | 'low';
+  data_completeness_score?: number;
 }
 
 interface ABTestSummary {
@@ -107,6 +122,11 @@ interface AnalysisSummary {
     last_updated: string | null;
     based_on_prediction_count: number;
   };
+  // US-004 메타데이터
+  data_sources_used?: DataSources;
+  limitations?: string[];
+  confidence_level?: 'high' | 'medium' | 'low';
+  data_completeness_score?: number;
   // A/B test fields
   ab_test_enabled?: boolean;
   model_a?: SingleModelSummary;
@@ -157,6 +177,19 @@ export default function StockDetailPage() {
     bgColor: string,
     borderColor: string
   ) => {
+    // 신뢰도 색상 매핑
+    const confidenceColorScheme = {
+      high: 'bg-green-100 text-green-700 border-green-300',
+      medium: 'bg-yellow-100 text-yellow-700 border-yellow-300',
+      low: 'bg-red-100 text-red-700 border-red-300',
+    };
+
+    const confidenceLabel = {
+      high: '높음 🟢',
+      medium: '중간 🟡',
+      low: '낮음 🔴',
+    };
+
     return (
       <div className={`flex-1 ${bgColor} rounded-2xl shadow-xl p-6 border ${borderColor}`}>
         {/* 모델 헤더 */}
@@ -164,7 +197,42 @@ export default function StockDetailPage() {
           <h3 className="text-2xl font-bold text-gray-900 flex items-center">
             <span className="mr-2">🤖</span> {modelName}
           </h3>
+
+          {/* 신뢰도 배지 */}
+          {model.confidence_level && (
+            <div className="mt-3">
+              <span className="text-sm font-medium text-gray-700 mr-2">분석 신뢰도:</span>
+              <span className={`px-3 py-1 rounded-full text-xs font-medium border ${confidenceColorScheme[model.confidence_level]}`}>
+                {confidenceLabel[model.confidence_level]}
+              </span>
+            </div>
+          )}
         </div>
+
+        {/* 데이터 소스 배지 */}
+        {model.data_sources_used && (
+          <div className="mb-6">
+            <h4 className="text-sm font-bold text-gray-700 mb-2">사용된 데이터 소스:</h4>
+            <DataSourceBadges dataSources={model.data_sources_used} />
+          </div>
+        )}
+
+        {/* 제한사항 섹션 */}
+        {model.limitations && model.limitations.length > 0 && (
+          <div className="mb-6 bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
+            <h4 className="text-sm font-bold text-yellow-800 mb-2 flex items-center">
+              <span className="mr-2">⚠️</span> 분석 제한사항
+            </h4>
+            <ul className="space-y-1">
+              {model.limitations.map((limitation, idx) => (
+                <li key={idx} className="text-xs text-yellow-700 flex items-start">
+                  <span className="mr-2">•</span>
+                  <span>{limitation}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* 종합 의견 */}
         <div className="mb-6">
@@ -520,6 +588,49 @@ export default function StockDetailPage() {
             ) : (
               // Single Model Mode (Backward Compatibility)
               <div>
+
+            {/* 신뢰도 배지 */}
+            {stock.analysis_summary.confidence_level && (
+              <div className="mb-6">
+                <span className="text-base font-medium text-gray-700 mr-2">분석 신뢰도:</span>
+                <span className={`px-4 py-2 rounded-full text-sm font-medium border ${
+                  stock.analysis_summary.confidence_level === 'high'
+                    ? 'bg-green-100 text-green-700 border-green-300'
+                    : stock.analysis_summary.confidence_level === 'medium'
+                    ? 'bg-yellow-100 text-yellow-700 border-yellow-300'
+                    : 'bg-red-100 text-red-700 border-red-300'
+                }`}>
+                  {stock.analysis_summary.confidence_level === 'high' && '높음 🟢'}
+                  {stock.analysis_summary.confidence_level === 'medium' && '중간 🟡'}
+                  {stock.analysis_summary.confidence_level === 'low' && '낮음 🔴'}
+                </span>
+              </div>
+            )}
+
+            {/* 데이터 소스 배지 */}
+            {stock.analysis_summary.data_sources_used && (
+              <div className="mb-6">
+                <h4 className="text-base font-bold text-gray-700 mb-2">사용된 데이터 소스:</h4>
+                <DataSourceBadges dataSources={stock.analysis_summary.data_sources_used} />
+              </div>
+            )}
+
+            {/* 제한사항 섹션 */}
+            {stock.analysis_summary.limitations && stock.analysis_summary.limitations.length > 0 && (
+              <div className="mb-6 bg-yellow-50 border-l-4 border-yellow-400 p-5 rounded-lg">
+                <h4 className="text-base font-bold text-yellow-800 mb-3 flex items-center">
+                  <span className="mr-2">⚠️</span> 분석 제한사항
+                </h4>
+                <ul className="space-y-2">
+                  {stock.analysis_summary.limitations.map((limitation, idx) => (
+                    <li key={idx} className="text-sm text-yellow-700 flex items-start">
+                      <span className="mr-2">•</span>
+                      <span>{limitation}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {/* Section 1: 종합 의견 */}
             <div className="mb-10">
