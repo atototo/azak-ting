@@ -4,8 +4,8 @@ import { AuthProvider } from "./contexts/AuthContext";
 import LayoutWrapper from "./components/LayoutWrapper";
 
 export const metadata: Metadata = {
-  title: "Azak Dashboard",
-  description: "주가 예측 대시보드",
+  title: "아작 (주식 한입)",
+  description: "AI가 분석하는 주식 투자 도우미",
 };
 
 export default function RootLayout({
