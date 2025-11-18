@@ -32,6 +32,8 @@ from backend.utils.market_time import is_market_open
 from backend.db.session import SessionLocal
 from backend.db.models.stock import Stock
 from backend.notifications.auto_notify import process_new_news_notifications
+from backend.crawlers.kis_product_info_collector import run_product_info_collection
+from backend.crawlers.kis_financial_collector import run_financial_ratios_collection
 
 
 logger = logging.getLogger(__name__)
@@ -1077,6 +1079,26 @@ class CrawlerScheduler:
             replace_existing=True,
         )
 
+        # 상품정보 주간 수집 (일요일 새벽 1시)
+        self.scheduler.add_job(
+            func=run_product_info_collection,
+            trigger=CronTrigger(day_of_week='sun', hour=1, minute=0),
+            id='product_info_weekly',
+            name='Weekly Product Info Collection',
+            replace_existing=True
+        )
+        logger.info("✅ Registered weekly product info collection (Sun 1:00 AM)")
+
+        # 재무비율 주간 수집 (일요일 새벽 2시)
+        self.scheduler.add_job(
+            func=run_financial_ratios_collection,
+            trigger=CronTrigger(day_of_week='sun', hour=2, minute=0),
+            id='financial_ratios_weekly',
+            name='Weekly Financial Ratios Collection',
+            replace_existing=True
+        )
+        logger.info("✅ Registered weekly financial ratios collection (Sun 2:00 AM)")
+
         self.scheduler.start()
         self.is_running = True
 
@@ -1094,6 +1116,8 @@ class CrawlerScheduler:
         logger.info("   - 모델 평가 생성: 매일 16:30 (리포트 생성 후)")
         logger.info("   - 시간외 거래 가격: 매일 18:00 (시간외 거래 종료 후)")
         logger.info("   - KIS 업종/지수 일자별: 매일 18:00 (시간외 거래 종료 후)")
+        logger.info("   - 상품정보 주간 수집: 매주 일요일 01:00")
+        logger.info("   - 재무비율 주간 수집: 매주 일요일 02:00")
 
         # 초기 실행은 선택사항 (환경 변수로 제어)
         # 첫 스케줄까지 기다리는 것이 서버 시작을 빠르게 합니다

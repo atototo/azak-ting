@@ -1230,7 +1230,7 @@ class KISClient:
 
         return await self.request(
             method="GET",
-            endpoint="/uapi/domestic-stock/v1/quotations/inquire-financial-ratio",
+            endpoint="/uapi/domestic-stock/v1/finance/financial-ratio",
             tr_id=tr_id,
             params=params
         )
@@ -1272,7 +1272,7 @@ class KISClient:
 
         return await self.request(
             method="GET",
-            endpoint="/uapi/domestic-stock/v1/quotations/inquire-product-baseinfo",
+            endpoint="/uapi/domestic-stock/v1/quotations/search-info",
             tr_id=tr_id,
             params=params
         )

@@ -6,7 +6,7 @@
 **우선순위**: P0 (필수)
 **스토리 포인트**: 8
 **담당**: 백엔드 개발자
-**상태**: Done ✅
+**상태**: Done
 **의존성**: US-001 (DB 마이그레이션 완료 필요)
 
 ---
@@ -492,7 +492,7 @@ async def test_real_kis_product_info():
 
 **생성일**: 2025-11-17
 **예상 완료일**: 2025-11-25 (1-2주차)
-**실제 완료일**: 2025-11-17
+**실제 완료일**: 2025-11-18
 
 ---
 
@@ -562,3 +562,46 @@ Unit Tests: 9 passed in 0.13s
    - 빈 문자열 처리를 위한 `safe_float()` 헬퍼 함수 고려
 
 **Status**: ✅ Done - Approved for Production
+
+---
+
+### 🔧 엔드포인트 수정 (2025-11-18)
+
+**발견된 문제**: 초기 구현 시 API 엔드포인트 URL이 잘못되어 404 에러 발생
+
+**수정 내역**:
+
+1. **재무비율 API (`get_financial_ratios`)**
+   - ❌ 잘못된 URL: `/uapi/domestic-stock/v1/quotations/inquire-financial-ratio`
+   - ✅ 올바른 URL: `/uapi/domestic-stock/v1/finance/financial-ratio`
+   - 참조: `국내주식 재무비율[v1_국내주식-080].xlsx` 문서
+
+2. **상품정보 API (`get_product_info`)**
+   - ❌ 잘못된 URL: `/uapi/domestic-stock/v1/quotations/inquire-product-baseinfo`
+   - ✅ 올바른 URL: `/uapi/domestic-stock/v1/quotations/search-info`
+   - 참조: `상품기본조회[v1_국내주식-029].xlsx` 문서
+
+**검증 결과**:
+```bash
+# API 호출 테스트
+✅ Product Info: rt_cd=0 (성공)
+   - 응답 필드: pdno, prdt_name, prdt_clsf_name, ivst_prdt_type_cd_name 등
+
+✅ Financial Ratios: rt_cd=0 (성공)
+   - 응답 필드: stac_yymm, grs, roe_val, eps, bps, lblt_rate 등
+   - 데이터 개수: 22개/종목 (연도별 재무 데이터)
+
+# 통합 테스트
+✅ test_real_kis_product_info: PASSED (0.23s)
+✅ test_real_kis_financial_ratios: PASSED
+
+# 실제 데이터 수집 확인
+✅ ProductInfo: 49개 종목 저장 완료
+✅ FinancialRatio: 999개 레코드 저장 완료 (49개 종목 × 연도별)
+```
+
+**수정 파일**:
+- `backend/crawlers/kis_client.py` (line 1233, 1275)
+- `tests/integration/test_kis_api_integration.py` (import 경로 수정)
+
+**최종 상태**: ✅ 검증 완료 - Production Ready

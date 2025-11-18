@@ -10,8 +10,8 @@ Usage:
     RUN_INTEGRATION_TESTS=true pytest tests/integration/test_kis_api_integration.py -v
 """
 import pytest
-from backend.crawlers.kis_client import KISClient
-from backend.db.database import SessionLocal
+from backend.crawlers.kis_client import get_kis_client
+from backend.db.session import SessionLocal
 from backend.services.kis_data_service import save_product_info, save_financial_ratios
 import os
 
@@ -27,7 +27,7 @@ async def test_real_kis_financial_ratios():
 
     삼성전자(005930)의 재무비율 데이터를 실제 API로 조회합니다.
     """
-    client = KISClient()
+    client = await get_kis_client()
 
     # 삼성전자로 테스트
     result = await client.get_financial_ratios("005930")
@@ -54,7 +54,7 @@ async def test_real_kis_financial_ratios_with_db_save():
     """
     실전 KIS API 재무비율 조회 및 DB 저장 테스트
     """
-    client = KISClient()
+    client = await get_kis_client()
 
     # API 조회
     result = await client.get_financial_ratios("005930")
@@ -91,7 +91,7 @@ async def test_real_kis_product_info():
 
     삼성전자(005930)의 상품정보를 실제 API로 조회합니다.
     """
-    client = KISClient()
+    client = await get_kis_client()
 
     result = await client.get_product_info("005930")
 
@@ -117,7 +117,7 @@ async def test_real_kis_product_info_with_db_save():
     """
     실전 KIS API 상품정보 조회 및 DB 저장 테스트 (UPSERT)
     """
-    client = KISClient()
+    client = await get_kis_client()
 
     result = await client.get_product_info("005930")
 
@@ -151,7 +151,7 @@ async def test_real_kis_financial_ratios_quarterly():
     """
     실전 KIS API 재무비율 조회 - 분기별 데이터
     """
-    client = KISClient()
+    client = await get_kis_client()
 
     # 분기별 데이터 조회 (div_cls_code="1")
     result = await client.get_financial_ratios("005930", div_cls_code="1")
@@ -178,7 +178,7 @@ async def test_real_kis_multiple_stocks():
 
     여러 대표 종목의 데이터를 조회하여 API 안정성을 확인합니다.
     """
-    client = KISClient()
+    client = await get_kis_client()
 
     test_stocks = [
         ("005930", "삼성전자"),
