@@ -14,11 +14,15 @@ export async function POST(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 120000);
 
+    // 쿠키 헤더 가져오기 (인증 정보 전달)
+    const cookieHeader = request.headers.get('cookie');
+
     const response = await fetch(`${backendUrl}/api/reports/force-update/${stockCode}`, {
       method: 'POST',
       signal: controller.signal,
       headers: {
         'Connection': 'keep-alive',
+        ...(cookieHeader ? { 'Cookie': cookieHeader } : {}),
       },
       // Next.js fetch에 명시적으로 캐시 비활성화
       cache: 'no-store',

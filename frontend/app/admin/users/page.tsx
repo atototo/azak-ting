@@ -15,6 +15,9 @@ interface User {
   expired_date: string | null;
   created_at: string;
   updated_at: string;
+  report_update_enabled: boolean;
+  report_update_quota: number;
+  report_update_used: number;
 }
 
 /**
@@ -26,6 +29,8 @@ interface UserFormData {
   password: string;
   role: "user" | "admin";
   expired_date: string;
+  report_update_enabled: boolean;
+  report_update_quota: number;
 }
 
 /**
@@ -47,6 +52,8 @@ export default function UsersPage() {
     password: "",
     role: "user",
     expired_date: "",
+    report_update_enabled: false,
+    report_update_quota: 0,
   });
 
   // 비밀번호 변경 폼
@@ -111,7 +118,15 @@ export default function UsersPage() {
 
       await fetchUsers();
       setShowCreateModal(false);
-      setFormData({ email: "", nickname: "", password: "", role: "user", expired_date: "" });
+      setFormData({
+        email: "",
+        nickname: "",
+        password: "",
+        role: "user",
+        expired_date: "",
+        report_update_enabled: false,
+        report_update_quota: 0,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "오류가 발생했습니다");
     }
@@ -136,6 +151,8 @@ export default function UsersPage() {
               ? editingUser.expired_date + ":00" // "2025-11-17T12:00" -> "2025-11-17T12:00:00"
               : editingUser.expired_date) // 이미 ISO 형식인 경우
           : null,
+        report_update_enabled: editingUser.report_update_enabled,
+        report_update_quota: editingUser.report_update_quota,
       };
 
       if (newPassword) {
@@ -259,6 +276,9 @@ export default function UsersPage() {
                     상태
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    리포트 할당량
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     유효기간
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -299,6 +319,21 @@ export default function UsersPage() {
                       >
                         {user.is_active ? "활성" : "비활성"}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      {user.role === "admin" ? (
+                        <span className="text-blue-600 font-semibold">무제한</span>
+                      ) : user.report_update_enabled ? (
+                        <span className={
+                          user.report_update_used >= user.report_update_quota
+                            ? "text-red-600"
+                            : "text-green-600"
+                        }>
+                          {user.report_update_used} / {user.report_update_quota}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">권한 없음</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {user.expired_date ? (
@@ -399,6 +434,24 @@ export default function UsersPage() {
                     <span className="text-gray-600">유효기간:</span>
                     <span className={user.expired_date && new Date(user.expired_date) < new Date() ? "text-red-600 font-semibold" : "text-gray-900"}>
                       {user.expired_date ? new Date(user.expired_date).toLocaleDateString("ko-KR") : <span className="text-blue-600">무제한</span>}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">리포트 할당량:</span>
+                    <span>
+                      {user.role === "admin" ? (
+                        <span className="text-blue-600 font-semibold">무제한</span>
+                      ) : user.report_update_enabled ? (
+                        <span className={
+                          user.report_update_used >= user.report_update_quota
+                            ? "text-red-600 font-semibold"
+                            : "text-green-600"
+                        }>
+                          {user.report_update_used} / {user.report_update_quota}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">권한 없음</span>
+                      )}
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -514,12 +567,63 @@ export default function UsersPage() {
                     </p>
                   )}
                 </div>
+
+                {/* 리포트 업데이트 권한 설정 (사용자만) */}
+                {formData.role === "user" && (
+                  <>
+                    <div className="border-t pt-4">
+                      <label className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          checked={formData.report_update_enabled}
+                          onChange={(e) =>
+                            setFormData({ ...formData, report_update_enabled: e.target.checked })
+                          }
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                        />
+                        <span className="text-sm font-medium text-gray-700">
+                          리포트 업데이트 권한 부여
+                        </span>
+                      </label>
+                    </div>
+                    {formData.report_update_enabled && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          리포트 업데이트 할당 횟수
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={formData.report_update_quota}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              report_update_quota: parseInt(e.target.value) || 0,
+                            })
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <p className="mt-1 text-xs text-gray-500">
+                          0으로 설정하면 업데이트 불가능
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
                 <div className="flex justify-end space-x-2 mt-6">
                   <button
                     type="button"
                     onClick={() => {
                       setShowCreateModal(false);
-                      setFormData({ email: "", nickname: "", password: "", role: "user", expired_date: "" });
+                      setFormData({
+                        email: "",
+                        nickname: "",
+                        password: "",
+                        role: "user",
+                        expired_date: "",
+                        report_update_enabled: false,
+                        report_update_quota: 0,
+                      });
                     }}
                     className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors"
                   >
@@ -624,6 +728,52 @@ export default function UsersPage() {
                     비워두면 무제한으로 설정됩니다
                   </p>
                 </div>
+
+                {/* 리포트 업데이트 권한 설정 (사용자만) */}
+                {editingUser.role === "user" && (
+                  <>
+                    <div className="border-t pt-4">
+                      <label className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          checked={editingUser.report_update_enabled}
+                          onChange={(e) =>
+                            setEditingUser({
+                              ...editingUser,
+                              report_update_enabled: e.target.checked,
+                            })
+                          }
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                        />
+                        <span className="text-sm font-medium text-gray-700">
+                          리포트 업데이트 권한 부여
+                        </span>
+                      </label>
+                    </div>
+                    {editingUser.report_update_enabled && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          리포트 업데이트 할당 횟수
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={editingUser.report_update_quota}
+                          onChange={(e) =>
+                            setEditingUser({
+                              ...editingUser,
+                              report_update_quota: parseInt(e.target.value) || 0,
+                            })
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <p className="mt-1 text-xs text-gray-500">
+                          사용 중: {editingUser.report_update_used}회 / 총 할당: {editingUser.report_update_quota}회
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
                 <div className="flex justify-end space-x-2 mt-6">
                   <button
                     type="button"

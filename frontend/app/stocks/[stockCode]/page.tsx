@@ -510,9 +510,16 @@ export default function StockDetailPage() {
 
       if (result.success && result.status === 'processing') {
         // 백그라운드 작업 시작 성공
+        let message = `${result.stock_name || '종목'} 리포트 생성 중... 완료되면 자동으로 알림을 표시합니다.`;
+
+        // 할당량 정보가 있으면 추가
+        if (result.quota_info) {
+          message += ` (남은 할당량: ${result.quota_info.remaining}/${result.quota_info.total})`;
+        }
+
         setUpdateMessage({
           type: 'success',
-          text: `${result.stock_name || '종목'} 리포트 생성 중... 완료되면 자동으로 알림을 표시합니다.`
+          text: message
         });
 
         // 5초 후 메시지 제거
@@ -520,10 +527,25 @@ export default function StockDetailPage() {
           setUpdateMessage(null);
         }, 5000);
       } else {
+        // 에러 케이스 처리
+        let errorMessage = result.message || '리포트 업데이트 요청 실패';
+
+        // 할당량 초과 시 특별 처리
+        if (result.error === 'quota_exceeded' && result.quota_info) {
+          errorMessage = `리포트 업데이트 할당량을 모두 사용했습니다. (${result.quota_info.used}/${result.quota_info.total}) 관리자에게 문의하세요.`;
+        } else if (result.error === 'permission_denied') {
+          errorMessage = '리포트 업데이트 권한이 없습니다. 관리자에게 문의하세요.';
+        }
+
         setUpdateMessage({
           type: 'error',
-          text: result.message || '리포트 업데이트 요청 실패'
+          text: errorMessage
         });
+
+        // 에러 메시지는 10초 후 제거
+        setTimeout(() => {
+          setUpdateMessage(null);
+        }, 10000);
       }
     } catch (error) {
       console.error("Failed to update report:", error);

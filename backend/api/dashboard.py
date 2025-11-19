@@ -16,7 +16,9 @@ from backend.db.models.news import NewsArticle
 from backend.db.models.stock import Stock, StockPrice
 from backend.db.models.market_data import StockCurrentPrice, InvestorTrading
 from backend.db.models.prediction import Prediction
+from backend.db.models.user import User
 from backend.scheduler.crawler_scheduler import get_crawler_scheduler
+from backend.auth.dependencies import require_auth
 
 
 logger = logging.getLogger(__name__)
@@ -222,6 +224,7 @@ async def _generate_report_background(stock_code: str, stock_name: str):
 async def force_update_single_stock(
     stock_code: str,
     background_tasks: BackgroundTasks,
+    current_user: User = Depends(require_auth),
     db: Session = Depends(get_db)
 ):
     """
@@ -232,9 +235,13 @@ async def force_update_single_stock(
 
     Args:
         stock_code: 종목 코드
+        current_user: 현재 로그인된 사용자
 
     Returns:
         리포트 생성 시작 확인
+
+    Raises:
+        HTTPException: 403 (권한 없음 또는 할당량 초과)
     """
     try:
         from backend.utils.stock_mapping import get_stock_mapper
@@ -242,7 +249,35 @@ async def force_update_single_stock(
         stock_mapper = get_stock_mapper()
         stock_name = stock_mapper.get_company_name(stock_code) or stock_code
 
-        logger.info(f"📝 [{stock_code}] {stock_name} 리포트 업데이트 요청")
+        logger.info(f"📝 [{stock_code}] {stock_name} 리포트 업데이트 요청 (사용자: {current_user.email})")
+
+        # 권한 확인
+        if not current_user.report_update_enabled:
+            logger.warning(f"❌ [{current_user.email}] 리포트 업데이트 권한 없음")
+            return {
+                "success": False,
+                "message": "리포트 업데이트 권한이 없습니다. 관리자에게 문의하세요.",
+                "error": "permission_denied"
+            }
+
+        # 관리자가 아닌 경우 할당량 확인
+        if current_user.role != "admin":
+            remaining_quota = current_user.report_update_quota - current_user.report_update_used
+
+            if remaining_quota <= 0:
+                logger.warning(f"❌ [{current_user.email}] 리포트 업데이트 할당량 초과 (사용: {current_user.report_update_used}/{current_user.report_update_quota})")
+                return {
+                    "success": False,
+                    "message": f"리포트 업데이트 할당량을 모두 사용했습니다. (사용: {current_user.report_update_used}/{current_user.report_update_quota})",
+                    "error": "quota_exceeded",
+                    "quota_info": {
+                        "total": current_user.report_update_quota,
+                        "used": current_user.report_update_used,
+                        "remaining": remaining_quota
+                    }
+                }
+
+            logger.info(f"💡 [{current_user.email}] 남은 할당량: {remaining_quota}/{current_user.report_update_quota}")
 
         # 이미 처리 중이면 거부
         if stock_code in report_generation_status:
@@ -264,15 +299,33 @@ async def force_update_single_stock(
         # 백그라운드 작업 추가
         background_tasks.add_task(_generate_report_background, stock_code, stock_name)
 
+        # 관리자가 아닌 경우 사용 횟수 증가
+        if current_user.role != "admin":
+            current_user.report_update_used += 1
+            db.commit()
+            db.refresh(current_user)
+            logger.info(f"📊 [{current_user.email}] 할당량 사용: {current_user.report_update_used}/{current_user.report_update_quota}")
+
         logger.info(f"✅ [{stock_code}] {stock_name} 리포트 생성 작업 시작")
 
-        return {
+        # 응답에 할당량 정보 포함
+        response_data = {
             "success": True,
             "message": f"{stock_name} 리포트 생성을 시작했습니다",
             "status": "processing",
             "stock_code": stock_code,
             "stock_name": stock_name,
         }
+
+        # 관리자가 아닌 경우 할당량 정보 추가
+        if current_user.role != "admin":
+            response_data["quota_info"] = {
+                "total": current_user.report_update_quota,
+                "used": current_user.report_update_used,
+                "remaining": current_user.report_update_quota - current_user.report_update_used
+            }
+
+        return response_data
 
     except Exception as e:
         logger.error(f"리포트 업데이트 요청 실패 ({stock_code}): {e}", exc_info=True)

@@ -835,7 +835,11 @@ class StockPredictor:
 
             # MACD 분석
             macd = technical.get("macd", {})
-            if macd and macd.get("macd_line") is not None:
+            if (macd and
+                macd.get("macd_line") is not None and
+                macd.get("signal_line") is not None and
+                macd.get("histogram") is not None and
+                macd.get("trend") is not None):
                 macd_line = macd["macd_line"]
                 macd_signal = macd["signal_line"]
                 macd_histogram = macd["histogram"]
