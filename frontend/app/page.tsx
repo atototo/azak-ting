@@ -114,10 +114,9 @@ export default function Home() {
                 </div>
               ) : (
                 momentum.top_gainers.map((stock, index) => (
-                  <Link
+                  <div
                     key={stock.stock_code}
-                    href={`/stocks/${stock.stock_code}`}
-                    className="block px-6 py-3 hover:bg-amber-50 transition"
+                    className="block px-6 py-3"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3 flex-1">
@@ -135,7 +134,7 @@ export default function Home() {
                         </div>
                       </div>
                     </div>
-                  </Link>
+                  </div>
                 ))
               )}
             </div>
@@ -154,10 +153,9 @@ export default function Home() {
                 </div>
               ) : (
                 momentum.top_losers.map((stock, index) => (
-                  <Link
+                  <div
                     key={stock.stock_code}
-                    href={`/stocks/${stock.stock_code}`}
-                    className="block px-6 py-3 hover:bg-amber-50 transition"
+                    className="block px-6 py-3"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3 flex-1">
@@ -175,7 +173,7 @@ export default function Home() {
                         </div>
                       </div>
                     </div>
-                  </Link>
+                  </div>
                 ))
               )}
             </div>

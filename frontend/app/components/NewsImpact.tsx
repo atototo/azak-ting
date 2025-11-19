@@ -153,7 +153,7 @@ export default function NewsImpact({ prediction }: NewsImpactProps) {
               {impact_analysis}
             </p>
           ) : (
-            // Legacy format: object with business_impact and market_sentiment
+            // Legacy format: object with business_impact and market_sentiment_impact
             <div className="space-y-2">
               {impact_analysis.business_impact && (
                 <div>
@@ -161,10 +161,22 @@ export default function NewsImpact({ prediction }: NewsImpactProps) {
                   <span className="text-sm text-gray-600">{impact_analysis.business_impact}</span>
                 </div>
               )}
-              {impact_analysis.market_sentiment && (
+              {impact_analysis.market_sentiment_impact && (
                 <div>
                   <span className="text-sm font-medium text-gray-700">시장 분위기: </span>
-                  <span className="text-sm text-gray-600">{impact_analysis.market_sentiment}</span>
+                  <span className="text-sm text-gray-600">{impact_analysis.market_sentiment_impact}</span>
+                </div>
+              )}
+              {impact_analysis.competitive_impact && (
+                <div>
+                  <span className="text-sm font-medium text-gray-700">경쟁 환경: </span>
+                  <span className="text-sm text-gray-600">{impact_analysis.competitive_impact}</span>
+                </div>
+              )}
+              {impact_analysis.regulatory_impact && (
+                <div>
+                  <span className="text-sm font-medium text-gray-700">규제/정책: </span>
+                  <span className="text-sm text-gray-600">{impact_analysis.regulatory_impact}</span>
                 </div>
               )}
             </div>

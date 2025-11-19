@@ -97,6 +97,9 @@ class Settings(BaseSettings):
     KIS_WEBSOCKET_URL: str = "wss://openapi.koreainvestment.com:9443"
     KIS_MOCK_MODE: bool = True  # True: 모의투자, False: 실전투자
 
+    # 프리뷰 (블로그 캡처용)
+    PREVIEW_TOKEN: str = ""
+
     class Config:
         env_file = ".env"
         case_sensitive = True
