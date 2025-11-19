@@ -6,6 +6,7 @@ import Link from "next/link";
 import toast, { Toaster } from 'react-hot-toast';
 import NewsImpact from "../../components/NewsImpact";
 import { DataSourceBadges } from "../../components/DataSourceBadges";
+import StockChart from "../../components/StockChart";
 
 interface StockPrice {
   close: number;
@@ -652,6 +653,9 @@ export default function StockDetailPage() {
             )}
           </div>
         )}
+
+        {/* Stock Price Chart */}
+        <StockChart stockCode={stockCode} />
 
         {/* LLM-Generated Investment Summary - A/B Test Support */}
         {stock.analysis_summary && (

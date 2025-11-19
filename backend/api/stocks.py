@@ -536,13 +536,14 @@ async def get_stock_prices(
     종목 주가 히스토리
 
     특정 종목의 주가 데이터를 반환합니다.
+    오늘 일봉 데이터가 없으면 현재가를 포함합니다.
     """
     try:
         # 날짜 범위 계산
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days)
 
-        # 주가 조회
+        # 주가 조회 (일봉)
         prices = db.query(StockPrice).filter(
             StockPrice.stock_code == stock_code,
             StockPrice.date >= start_date,
@@ -557,6 +558,38 @@ async def get_stock_prices(
             "close": price.close,
             "volume": price.volume,
         } for price in prices]
+
+        # 오늘 일봉 데이터가 없으면 현재가를 추가
+        today = datetime.now().date()
+        has_today = any(
+            datetime.fromisoformat(p["date"]).date() == today for p in result if p["date"]
+        )
+
+        if not has_today:
+            from sqlalchemy import text
+            current_price_row = db.execute(text("""
+                SELECT stck_prpr, acml_vol, datetime
+                FROM stock_current_price
+                WHERE stock_code = :stock_code
+                AND datetime::date = :today
+                ORDER BY datetime DESC
+                LIMIT 1
+            """), {"stock_code": stock_code, "today": today}).fetchone()
+
+            if current_price_row:
+                current_price = current_price_row[0]
+                volume = current_price_row[1] or 0
+                price_datetime = current_price_row[2]
+
+                # 현재가를 임시 OHLC로 사용
+                result.append({
+                    "date": price_datetime.replace(hour=0, minute=0, second=0).isoformat(),
+                    "open": current_price,
+                    "high": current_price,
+                    "low": current_price,
+                    "close": current_price,
+                    "volume": volume,
+                })
 
         return result
 
@@ -611,4 +644,95 @@ async def get_stock_predictions(
 
     except Exception as e:
         logger.error(f"종목별 예측 조회 실패: {e}", exc_info=True)
+        raise
+
+
+@router.get("/{stock_code}/analysis-reports")
+async def get_analysis_reports(
+    stock_code: str,
+    start_date: Optional[str] = Query(None, description="시작 날짜 (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="종료 날짜 (YYYY-MM-DD)"),
+    db: Session = Depends(get_db)
+):
+    """
+    차트용 AI 리포트 데이터
+
+    특정 종목의 모델별 AI 투자 리포트를 반환합니다.
+    """
+    try:
+        from backend.db.models.model import Model
+        from backend.db.models.stock_analysis import StockAnalysisSummary
+
+        # 리포트 쿼리
+        query = db.query(StockAnalysisSummary).filter(
+            StockAnalysisSummary.stock_code == stock_code
+        )
+
+        # 날짜 범위 필터
+        if start_date:
+            start_dt = datetime.fromisoformat(start_date)
+            query = query.filter(StockAnalysisSummary.last_updated >= start_dt)
+
+        if end_date:
+            # end_date는 해당 날짜의 23:59:59까지 포함하도록 처리
+            from datetime import timedelta
+            end_dt = datetime.fromisoformat(end_date) + timedelta(days=1)
+            query = query.filter(StockAnalysisSummary.last_updated < end_dt)
+
+        reports = query.order_by(StockAnalysisSummary.last_updated.asc()).all()
+
+        # 모든 활성 모델 정보 조회
+        models = db.query(Model).filter(Model.is_active == True).all()
+        model_info = {
+            model.id: {
+                "id": model.id,
+                "name": model.name,
+                "description": model.description
+            }
+            for model in models
+        }
+
+        # 리포트 데이터 변환
+        result = []
+        for report in reports:
+            # 투자 방향 결정 (up/down/hold 카운트 기반)
+            total = report.total_predictions or 0
+            direction = "hold"
+            if total > 0:
+                up_ratio = (report.up_count or 0) / total
+                down_ratio = (report.down_count or 0) / total
+                if up_ratio > 0.6:
+                    direction = "positive"
+                elif down_ratio > 0.6:
+                    direction = "negative"
+
+            result.append({
+                "id": report.id,
+                "model_id": report.model_id,
+                "model_name": model_info.get(report.model_id, {}).get("name", f"Model {report.model_id}") if report.model_id else "Unknown",
+                "generated_at": report.last_updated.isoformat() if report.last_updated else None,
+                "sentiment_direction": direction,
+                "overall_summary": report.overall_summary,
+                "recommendation": report.recommendation,
+                "short_term_scenario": report.short_term_scenario,
+                "medium_term_scenario": report.medium_term_scenario,
+                "long_term_scenario": report.long_term_scenario,
+                "risk_factors": report.risk_factors or [],
+                "opportunity_factors": report.opportunity_factors or [],
+                "confidence_level": report.confidence_level,
+                "data_completeness_score": report.data_completeness_score,
+                # 가격 목표
+                "short_term_target_price": report.short_term_target_price,
+                "medium_term_target_price": report.medium_term_target_price,
+                "long_term_target_price": report.long_term_target_price,
+                "base_price": report.base_price,
+            })
+
+        return {
+            "reports": result,
+            "models": list(model_info.values())
+        }
+
+    except Exception as e:
+        logger.error(f"AI 리포트 조회 실패: {e}", exc_info=True)
         raise
