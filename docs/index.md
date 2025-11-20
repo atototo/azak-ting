@@ -76,7 +76,13 @@
   - [개발 가이드](./architecture/backend/development.md)
   - [배포 가이드](./architecture/backend/deployment.md)
   - [최적화 & 보안](./architecture/backend/optimization.md)
-- [Frontend 아키텍처](./architecture/frontend.md)
+- [Frontend 아키텍처](./architecture/frontend/index.md) - 6개 주제별 문서
+  - [시스템 개요](./architecture/frontend/overview.md)
+  - [라우팅 & 페이지](./architecture/frontend/routing-pages.md)
+  - [컴포넌트 구조](./architecture/frontend/components.md)
+  - [상태 관리](./architecture/frontend/state-management.md)
+  - [개발 가이드](./architecture/frontend/development.md)
+  - [배포 가이드](./architecture/frontend/deployment.md)
 - [Infrastructure 아키텍처](./architecture/infrastructure.md)
 - [통합 아키텍처](./architecture/integration.md)
 
@@ -285,6 +291,6 @@ azak/
 
 ---
 
-**📝 문서 버전:** 1.1.0
-**마지막 업데이트:** 2025-11-20 (Backend 아키텍처 문서 주제별 분리)
+**📝 문서 버전:** 1.2.0
+**마지막 업데이트:** 2025-11-20 (Backend/Frontend 아키텍처 문서 주제별 분리)
 **생성 도구:** BMad document-project workflow (Deep Scan)
