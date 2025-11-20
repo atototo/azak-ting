@@ -233,7 +233,7 @@ class PriceService:
         """
         실시간 시간외 가격 조회 (KIS API 직접 호출)
 
-        inquire-daily-overtimeprice API를 사용하여 output1에서 시가/고가/저가 포함 조회
+        inquire-overtime-price API를 사용하여 실시간 시간외 현재가 조회
 
         Args:
             stock_code: 종목 코드
@@ -246,20 +246,20 @@ class PriceService:
             # KIS API 호출 (async)
             kis_client = get_kis_client()
 
-            # inquire-daily-overtimeprice API 호출 (output1에 시가/고가/저가 포함)
-            response = await kis_client.get_overtime_daily_prices(stock_code)
+            # inquire-overtime-price API 호출 (실시간 시간외 현재가)
+            response = await kis_client.get_overtime_price(stock_code)
 
             # 응답 파싱
             if response and response.get("rt_cd") == "0":
-                output1 = response.get("output1", {})
+                output = response.get("output", {})
 
-                # 가격 데이터 파싱 (output1에서)
-                ovtm_untp_prpr = float(output1.get("ovtm_untp_prpr", 0) or 0)  # 시간외 단일가 현재가
-                ovtm_untp_prdy_vrss = float(output1.get("ovtm_untp_prdy_vrss", 0) or 0)  # 전일 대비
-                ovtm_untp_prdy_ctrt = float(output1.get("ovtm_untp_prdy_ctrt", 0) or 0)  # 전일 대비율
-                prdy_vrss_sign = output1.get("ovtm_untp_prdy_vrss_sign") or output1.get("prdy_vrss_sign", "3")  # 전일 대비 부호
-                ovtm_untp_vol = int(output1.get("ovtm_untp_vol", 0) or 0)  # 시간외 단일가 거래량
-                ovtm_untp_tr_pbmn = int(output1.get("ovtm_untp_tr_pbmn", 0) or 0)  # 시간외 단일가 거래 대금
+                # 가격 데이터 파싱
+                ovtm_untp_prpr = float(output.get("ovtm_untp_prpr", 0) or 0)  # 시간외 단일가 현재가
+                ovtm_untp_prdy_vrss = float(output.get("ovtm_untp_prdy_vrss", 0) or 0)  # 전일 대비
+                ovtm_untp_prdy_ctrt = float(output.get("ovtm_untp_prdy_ctrt", 0) or 0)  # 전일 대비율
+                prdy_vrss_sign = output.get("ovtm_untp_prdy_vrss_sign", "3")  # 전일 대비 부호
+                ovtm_untp_vol = int(output.get("ovtm_untp_vol", 0) or 0)  # 시간외 단일가 거래량
+                ovtm_untp_tr_pbmn = int(output.get("ovtm_untp_tr_pbmn", 0) or 0)  # 시간외 단일가 거래 대금
 
                 # 참고: 시간외 API의 시가/고가/저가는 '0'으로 오므로 정규장 데이터를 사용
                 # 이 메서드는 시간외 가격만 반환하고, 시가/고가/저가는 상위 메서드에서 정규장 데이터로 병합됨
@@ -280,15 +280,15 @@ class PriceService:
                     "volume": ovtm_untp_vol,
                     "trading_value": ovtm_untp_tr_pbmn,
                     "datetime": datetime.now().isoformat(),
-                    "source": "kis_api_daily_overtime",
+                    "source": "kis_api_realtime_overtime",
                     "market_status": market_status,
                 }
             else:
-                logger.warning(f"KIS 시간외 일자별 API 응답 실패: {response}")
+                logger.warning(f"KIS 실시간 시간외 API 응답 실패: {response}")
                 return None
 
         except Exception as e:
-            logger.warning(f"KIS 시간외 일자별 API 호출 실패 ({stock_code}): {e}", exc_info=True)
+            logger.warning(f"KIS 실시간 시간외 API 호출 실패 ({stock_code}): {e}", exc_info=True)
             return None
 
     @classmethod
