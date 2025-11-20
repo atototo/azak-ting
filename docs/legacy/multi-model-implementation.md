@@ -509,12 +509,12 @@ uv run python -c "from backend.db.models.ab_test_config import ABTestConfig; fro
 
 ## 참고 문서
 
-- [MULTI_MODEL_DESIGN.md](./MULTI_MODEL_DESIGN.md) - 초기 설계 문서
-- [backend/db/models/model.py](../backend/db/models/model.py) - Model 스키마
-- [backend/db/models/ab_test_config.py](../backend/db/models/ab_test_config.py) - ABTestConfig 스키마
-- [backend/llm/predictor.py](../backend/llm/predictor.py) - StockPredictor 구현
-- [backend/api/models.py](../backend/api/models.py) - 모델 관리 API
-- [backend/api/ab_test.py](../backend/api/ab_test.py) - A/B 설정 API
+- [멀티 모델 설계](./multi-model-design.md) - 초기 설계 문서
+- [backend/db/models/model.py](../../backend/db/models/model.py) - Model 스키마
+- [backend/db/models/ab_test_config.py](../../backend/db/models/ab_test_config.py) - ABTestConfig 스키마
+- [backend/llm/predictor.py](../../backend/llm/predictor.py) - StockPredictor 구현
+- [backend/api/models.py](../../backend/api/models.py) - 모델 관리 API
+- [backend/api/ab_test.py](../../backend/api/ab_test.py) - A/B 설정 API
 
 ## 변경 이력
 
