@@ -6,7 +6,18 @@ import Link from "next/link";
 import toast, { Toaster } from 'react-hot-toast';
 import NewsImpact from "../../components/NewsImpact";
 import { DataSourceBadges } from "../../components/DataSourceBadges";
-import StockChart from "../../components/StockChart";
+import dynamic from 'next/dynamic';
+
+const StockChart = dynamic(() => import("../../components/StockChart"), {
+  ssr: false,
+  loading: () => (
+    <div className="bg-white rounded-lg shadow p-6 mb-6">
+      <div className="flex items-center justify-center h-96">
+        <div className="text-gray-500">차트 로딩 중...</div>
+      </div>
+    </div>
+  ),
+});
 
 interface StockPrice {
   close: number;

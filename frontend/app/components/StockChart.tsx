@@ -274,11 +274,10 @@ export default function StockChart({ stockCode }: StockChartProps) {
             <button
               key={p}
               onClick={() => setPeriod(p)}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                period === p
-                  ? "bg-indigo-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${period === p
+                ? "bg-indigo-600 text-white"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
             >
               {p}
             </button>
@@ -307,181 +306,183 @@ export default function StockChart({ stockCode }: StockChartProps) {
         </div>
       )}
 
-      <ResponsiveContainer width="100%" height={450}>
-        <ComposedChart
-          data={data}
-          margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
-        >
-          <defs>
-            <linearGradient id="colorVolume" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8} />
-              <stop offset="95%" stopColor="#8884d8" stopOpacity={0.1} />
-            </linearGradient>
-          </defs>
+      <div style={{ width: "100%", height: 450 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart
+            data={data}
+            margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
+          >
+            <defs>
+              <linearGradient id="colorVolume" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8} />
+                <stop offset="95%" stopColor="#8884d8" stopOpacity={0.1} />
+              </linearGradient>
+            </defs>
 
-          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
 
-          <XAxis
-            dataKey="date"
-            tickFormatter={formatDate}
-            stroke="#6b7280"
-            style={{ fontSize: "12px" }}
-          />
+            <XAxis
+              dataKey="date"
+              tickFormatter={formatDate}
+              stroke="#6b7280"
+              style={{ fontSize: "12px" }}
+            />
 
-          {/* 주가 Y축 (왼쪽) */}
-          <YAxis
-            yAxisId="price"
-            tickFormatter={formatPrice}
-            stroke="#6b7280"
-            style={{ fontSize: "12px" }}
-            domain={["auto", "auto"]}
-          />
-
-          {/* 거래량 Y축 (오른쪽) */}
-          <YAxis
-            yAxisId="volume"
-            orientation="right"
-            tickFormatter={formatVolume}
-            stroke="#6b7280"
-            style={{ fontSize: "12px" }}
-          />
-
-          <Tooltip content={<CustomTooltip />} />
-
-          <Legend
-            wrapperStyle={{ paddingTop: "20px" }}
-            iconType="line"
-          />
-
-          {/* 거래량 바 차트 (하단) */}
-          <Bar
-            yAxisId="volume"
-            dataKey="volume"
-            fill="url(#colorVolume)"
-            name="거래량"
-            opacity={0.3}
-          />
-
-          {/* 고가 라인 */}
-          <Line
-            yAxisId="price"
-            type="monotone"
-            dataKey="high"
-            stroke="#ef4444"
-            strokeWidth={1}
-            dot={false}
-            name="고가"
-            opacity={0.5}
-          />
-
-          {/* 저가 라인 */}
-          <Line
-            yAxisId="price"
-            type="monotone"
-            dataKey="low"
-            stroke="#3b82f6"
-            strokeWidth={1}
-            dot={false}
-            name="저가"
-            opacity={0.5}
-          />
-
-          {/* 종가 라인 (메인) */}
-          <Line
-            yAxisId="price"
-            type="monotone"
-            dataKey="close"
-            stroke="#10b981"
-            strokeWidth={2}
-            dot={false}
-            name="종가"
-          />
-
-          {/* 선택된 리포트의 목표가 수평선 */}
-          {selectedReport && selectedReport.short_term_target_price && (
-            <ReferenceLine
+            {/* 주가 Y축 (왼쪽) */}
+            <YAxis
               yAxisId="price"
-              y={selectedReport.short_term_target_price}
-              stroke={getModelColor(selectedReport.model_id)}
-              strokeDasharray="5 5"
+              tickFormatter={formatPrice}
+              stroke="#6b7280"
+              style={{ fontSize: "12px" }}
+              domain={["auto", "auto"]}
+            />
+
+            {/* 거래량 Y축 (오른쪽) */}
+            <YAxis
+              yAxisId="volume"
+              orientation="right"
+              tickFormatter={formatVolume}
+              stroke="#6b7280"
+              style={{ fontSize: "12px" }}
+            />
+
+            <Tooltip content={<CustomTooltip />} />
+
+            <Legend
+              wrapperStyle={{ paddingTop: "20px" }}
+              iconType="line"
+            />
+
+            {/* 거래량 바 차트 (하단) */}
+            <Bar
+              yAxisId="volume"
+              dataKey="volume"
+              fill="url(#colorVolume)"
+              name="거래량"
+              opacity={0.3}
+            />
+
+            {/* 고가 라인 */}
+            <Line
+              yAxisId="price"
+              type="monotone"
+              dataKey="high"
+              stroke="#ef4444"
+              strokeWidth={1}
+              dot={false}
+              name="고가"
+              opacity={0.5}
+            />
+
+            {/* 저가 라인 */}
+            <Line
+              yAxisId="price"
+              type="monotone"
+              dataKey="low"
+              stroke="#3b82f6"
+              strokeWidth={1}
+              dot={false}
+              name="저가"
+              opacity={0.5}
+            />
+
+            {/* 종가 라인 (메인) */}
+            <Line
+              yAxisId="price"
+              type="monotone"
+              dataKey="close"
+              stroke="#10b981"
               strokeWidth={2}
-              label={{
-                value: `단기 목표: ${selectedReport.short_term_target_price.toLocaleString()}원`,
-                position: 'insideTopRight',
-                fill: getModelColor(selectedReport.model_id),
-                fontSize: 11,
-                fontWeight: 'bold',
-              }}
+              dot={false}
+              name="종가"
             />
-          )}
 
-          {selectedReport && selectedReport.medium_term_target_price && (
-            <ReferenceLine
-              yAxisId="price"
-              y={selectedReport.medium_term_target_price}
-              stroke={getModelColor(selectedReport.model_id)}
-              strokeDasharray="3 3"
-              strokeWidth={1.5}
-              opacity={0.7}
-              label={{
-                value: `중기 목표: ${selectedReport.medium_term_target_price.toLocaleString()}원`,
-                position: 'insideBottomRight',
-                fill: getModelColor(selectedReport.model_id),
-                fontSize: 10,
-              }}
-            />
-          )}
-
-          {/* AI 리포트 마커 (모델별) */}
-          {reports.map((report, idx) => {
-            if (!report.generated_at) {
-              return null;
-            }
-
-            const reportDate = new Date(report.generated_at).toISOString().split('T')[0];
-            const priceData = data.find(d => d.date.startsWith(reportDate));
-
-            if (!priceData) {
-              return null;
-            }
-
-            // 마커 Y축 위치 계산 (같은 날짜의 마커들을 세로로 배치)
-            const sameDateReports = reports.filter(r =>
-              r.generated_at && new Date(r.generated_at).toISOString().split('T')[0] === reportDate
-            );
-            const sameDateIndex = sameDateReports.findIndex(r => r.id === report.id);
-            // 간격을 더 넓게 (0.02 → 0.03)
-            const yPosition = priceData.high * (1.04 + (sameDateIndex * 0.03));
-
-            return (
-              <ReferenceDot
-                key={report.id}
+            {/* 선택된 리포트의 목표가 수평선 */}
+            {selectedReport && selectedReport.short_term_target_price && (
+              <ReferenceLine
                 yAxisId="price"
-                x={priceData.date}
-                y={yPosition}
-                r={6}  // 작은 점 (클릭 영역)
-                fill={getModelColor(report.model_id)}
-                fillOpacity={0.3}  // 반투명
-                stroke={getModelColor(report.model_id)}
+                y={selectedReport.short_term_target_price}
+                stroke={getModelColor(selectedReport.model_id)}
+                strokeDasharray="5 5"
                 strokeWidth={2}
-                onClick={() => setSelectedReport(report)}
-                style={{ cursor: 'pointer' }}
                 label={{
-                  value: getRecommendationLabel(report),
-                  position: 'right',
-                  fontSize: 13,
+                  value: `단기 목표: ${selectedReport.short_term_target_price.toLocaleString()}원`,
+                  position: 'insideTopRight',
+                  fill: getModelColor(selectedReport.model_id),
+                  fontSize: 11,
                   fontWeight: 'bold',
-                  fill: getModelColor(report.model_id),
-                  stroke: '#fff',
-                  strokeWidth: 4,
-                  paintOrder: 'stroke',
-                  style: { cursor: 'pointer' },
                 }}
               />
-            );
-          })}
-        </ComposedChart>
-      </ResponsiveContainer>
+            )}
+
+            {selectedReport && selectedReport.medium_term_target_price && (
+              <ReferenceLine
+                yAxisId="price"
+                y={selectedReport.medium_term_target_price}
+                stroke={getModelColor(selectedReport.model_id)}
+                strokeDasharray="3 3"
+                strokeWidth={1.5}
+                opacity={0.7}
+                label={{
+                  value: `중기 목표: ${selectedReport.medium_term_target_price.toLocaleString()}원`,
+                  position: 'insideBottomRight',
+                  fill: getModelColor(selectedReport.model_id),
+                  fontSize: 10,
+                }}
+              />
+            )}
+
+            {/* AI 리포트 마커 (모델별) */}
+            {reports.map((report, idx) => {
+              if (!report.generated_at) {
+                return null;
+              }
+
+              const reportDate = new Date(report.generated_at).toISOString().split('T')[0];
+              const priceData = data.find(d => d.date.startsWith(reportDate));
+
+              if (!priceData) {
+                return null;
+              }
+
+              // 마커 Y축 위치 계산 (같은 날짜의 마커들을 세로로 배치)
+              const sameDateReports = reports.filter(r =>
+                r.generated_at && new Date(r.generated_at).toISOString().split('T')[0] === reportDate
+              );
+              const sameDateIndex = sameDateReports.findIndex(r => r.id === report.id);
+              // 간격을 더 넓게 (0.02 → 0.03)
+              const yPosition = priceData.high * (1.04 + (sameDateIndex * 0.03));
+
+              return (
+                <ReferenceDot
+                  key={report.id}
+                  yAxisId="price"
+                  x={priceData.date}
+                  y={yPosition}
+                  r={6}  // 작은 점 (클릭 영역)
+                  fill={getModelColor(report.model_id)}
+                  fillOpacity={0.3}  // 반투명
+                  stroke={getModelColor(report.model_id)}
+                  strokeWidth={2}
+                  onClick={() => setSelectedReport(report)}
+                  style={{ cursor: 'pointer' }}
+                  label={{
+                    value: getRecommendationLabel(report),
+                    position: 'right',
+                    fontSize: 13,
+                    fontWeight: 'bold',
+                    fill: getModelColor(report.model_id),
+                    stroke: '#fff',
+                    strokeWidth: 4,
+                    paintOrder: 'stroke',
+                    style: { cursor: 'pointer' },
+                  }}
+                />
+              );
+            })}
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
 
       {/* 선택된 리포트 상세 정보 */}
       {selectedReport && (
