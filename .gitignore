@@ -103,3 +103,11 @@ check_*.py
 generate_*.py
 test_*.py
 test_*.json
+
+# Claude Code Local Settings
+.claude/settings.local.json
+.claude/skills/
+
+# Documentation Archives and Reports
+docs/.archive/
+docs/project-scan-report*.json

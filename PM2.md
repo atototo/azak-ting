@@ -1,4 +1,15 @@
+---
+title: "PM2 프로세스 관리 가이드"
+created: 2025-11-20
+updated: 2025-11-20
+author: young
+category: deployment
+environment: production
+---
+
 # PM2 프로세스 관리 가이드
+
+> **참고**: 전체 아키텍처 개요는 [Architecture Overview](docs/architecture/overview.md)를 참조하세요.
 
 ## 개요
 
@@ -181,3 +192,76 @@ PM2 설정은 `ecosystem.config.js`에 정의되어 있습니다:
 - 환경 변수 설정
 
 **주의**: `ecosystem.config.js`는 절대 경로를 포함하므로 Git에 커밋하지 않습니다.
+
+### 예시 설정 파일
+
+프로젝트 루트에 `ecosystem.config.js` 파일을 생성하세요:
+
+```javascript
+module.exports = {
+  apps: [
+    {
+      name: 'azak-backend',
+      script: 'uvicorn',
+      args: 'backend.main:app --host 0.0.0.0 --port 8000',
+      cwd: '/Users/young/ai-work/azak',
+      interpreter: '/Users/young/ai-work/azak/.venv/bin/python',
+      max_memory_restart: '2G',
+      autorestart: true,
+      watch: false,
+      error_file: './logs/backend-error.log',
+      out_file: './logs/backend-out.log',
+      env: {
+        PYTHONPATH: '/Users/young/ai-work/azak'
+      }
+    },
+    {
+      name: 'azak-frontend',
+      script: 'npm',
+      args: 'start',
+      cwd: '/Users/young/ai-work/azak/frontend',
+      max_memory_restart: '1G',
+      autorestart: true,
+      watch: false,
+      error_file: '../logs/frontend-error.log',
+      out_file: '../logs/frontend-out.log',
+      env: {
+        PORT: '3030'
+      }
+    },
+    {
+      name: 'azak-ngrok',
+      script: 'ngrok',
+      args: 'http --domain=azak.ngrok.app 3030',
+      cwd: '/Users/young/ai-work/azak',
+      autorestart: true,
+      watch: false,
+      error_file: './logs/ngrok-error.log',
+      out_file: './logs/ngrok-out.log'
+    }
+  ]
+};
+```
+
+### 설정 항목 설명
+
+| 항목 | 설명 |
+|------|------|
+| `name` | PM2 프로세스 이름 |
+| `script` | 실행할 스크립트/명령어 |
+| `args` | 스크립트 인자 |
+| `cwd` | 작업 디렉토리 (절대 경로) |
+| `interpreter` | 인터프리터 경로 (Python 가상환경) |
+| `max_memory_restart` | 메모리 제한 초과 시 자동 재시작 |
+| `autorestart` | 크래시 시 자동 재시작 여부 |
+| `watch` | 파일 변경 감지 (개발 시에만 true) |
+| `error_file` | 에러 로그 파일 경로 |
+| `out_file` | 표준 출력 로그 파일 경로 |
+| `env` | 환경 변수 |
+
+### 첫 실행 전 체크리스트
+
+1. **절대 경로 수정**: `cwd`와 `interpreter` 경로를 본인 환경에 맞게 수정
+2. **로그 디렉토리 생성**: `mkdir -p logs`
+3. **Python 가상환경 활성화 확인**: `.venv/bin/python` 경로 확인
+4. **ngrok 도메인 설정**: ngrok 대시보드에서 도메인 예약 필요
