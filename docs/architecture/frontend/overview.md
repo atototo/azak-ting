@@ -74,9 +74,11 @@ graph TB
         FastAPI[FastAPI<br/>REST API]
     end
 
+    Login[로그인 페이지]
+
     Browser -->|HTTP| Middleware
     Middleware -->|인증 성공| Pages
-    Middleware -->|인증 실패| Login[/login]
+    Middleware -->|인증 실패| Login
 
     Pages --> Components
     Pages --> AuthCtx
