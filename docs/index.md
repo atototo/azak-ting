@@ -67,7 +67,15 @@
 
 ### 📐 아키텍처
 - [전체 아키텍처 개요](./architecture/overview.md)
-- [Backend 아키텍처](./architecture/backend.md)
+- [Backend 아키텍처](./architecture/backend/index.md) - 8개 주제별 문서
+  - [시스템 개요](./architecture/backend/overview.md)
+  - [데이터 아키텍처](./architecture/backend/data-architecture.md)
+  - [API 설계](./architecture/backend/api-design.md)
+  - [프로세스 흐름](./architecture/backend/processes.md)
+  - [컴포넌트 구조](./architecture/backend/components.md)
+  - [개발 가이드](./architecture/backend/development.md)
+  - [배포 가이드](./architecture/backend/deployment.md)
+  - [최적화 & 보안](./architecture/backend/optimization.md)
 - [Frontend 아키텍처](./architecture/frontend.md)
 - [Infrastructure 아키텍처](./architecture/infrastructure.md)
 - [통합 아키텍처](./architecture/integration.md)
@@ -277,6 +285,6 @@ azak/
 
 ---
 
-**📝 문서 버전:** 1.0.3
-**마지막 업데이트:** 2025-11-20 (맥북 로컬 환경 반영: EC2/SaaS → PM2/ngrok)
+**📝 문서 버전:** 1.1.0
+**마지막 업데이트:** 2025-11-20 (Backend 아키텍처 문서 주제별 분리)
 **생성 도구:** BMad document-project workflow (Deep Scan)
