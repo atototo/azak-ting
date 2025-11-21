@@ -17,8 +17,9 @@
 - **평가**: `model_evaluation`, `evaluation_history` (모델 성능 추적)
 - **시장 데이터**: `daily_price`, `minute_price`, `index_daily_price`, `overtime_price` (KIS API)
 - **재무 데이터**: `financial_ratios`, `product_info` (기업 재무 정보)
-- **A/B 테스트**: `ab_test_config`, `model` (멀티 모델 실험)
+- **A/B 테스트**: `ab_test_config`, `model` (멀티 모델 실험, normal/reasoning 타입 지원)
 - **매칭**: `match` (뉴스-주가 연결)
+- **공개 프리뷰**: `public_preview_links` (블로그/SNS 홍보용 공개 링크)
 
 ## 벡터 임베딩 (Milvus)
 
@@ -96,8 +97,11 @@ erDiagram
         int id PK
         string name
         string provider
-        string model_name
+        string model_identifier
+        string model_type "normal/reasoning"
         boolean is_active
+        string description
+        datetime created_at
     }
 
     STOCK_ANALYSIS ||--o{ MODEL_EVALUATION : evaluates
@@ -169,6 +173,16 @@ erDiagram
         decimal pbr
         decimal roe
         decimal debt_ratio
+    }
+
+    STOCK ||--o{ PUBLIC_PREVIEW_LINK : has_preview
+    USER ||--o{ PUBLIC_PREVIEW_LINK : creates
+    PUBLIC_PREVIEW_LINK {
+        string link_id PK "UUID"
+        string stock_code FK
+        int created_by FK
+        datetime created_at
+        datetime expires_at "nullable"
     }
 ```
 

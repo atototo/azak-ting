@@ -14,9 +14,10 @@
 - `stocks.py` - 종목 조회
 - `stock_management.py` - 종목 관리 (추가/수정)
 - `ab_test.py` - A/B 테스트 설정
-- `models.py` - 모델 관리
+- `models.py` - 모델 관리 (normal/reasoning 타입 지원)
 - `evaluations.py` - 모델 평가 조회
 - `statistics.py` - 통계 API
+- `preview_links.py` - 공개 프리뷰 링크 관리 (블로그/SNS 홍보용)
 
 ### `auth/` - 인증 & 보안
 
@@ -50,8 +51,8 @@
 
 ### `llm/` - AI & 예측
 
-- `multi_model_predictor.py` - 멀티 LLM 예측 (OpenAI, OpenRouter)
-- `investment_report.py` - 투자 리포트 생성
+- `multi_model_predictor.py` - 멀티 LLM 예측 (OpenAI, OpenRouter, normal/reasoning 모델 지원)
+- `investment_report.py` - 투자 리포트 생성 (통합 프롬프트 `build_unified_prompt`)
 - `embedder.py` - 뉴스 임베딩 생성
 - `vector_search.py` - 벡터 유사도 검색
 - `prediction_cache.py` - 예측 결과 캐싱
@@ -64,7 +65,7 @@
 
 ### `services/` - 비즈니스 로직
 
-- `stock_analysis_service.py` - 종목 분석 및 리포트 생성
+- `stock_analysis_service.py` - 종목 분석 및 통합 리포트 생성 (`generate_unified_stock_report`, DB + Prediction 통합)
 - `evaluation_service.py` - 모델 평가 로직
 - `price_service.py` - 주가 데이터 조회
 - `aggregation_service.py` - 데이터 집계
@@ -81,7 +82,7 @@
   - `news.py` - 뉴스
   - `prediction.py` - 예측
   - `stock_analysis.py` - 종목 분석
-  - `model.py` - AI 모델
+  - `model.py` - AI 모델 (model_type: normal/reasoning 지원)
   - `model_evaluation.py` - 모델 평가
   - `evaluation_history.py` - 평가 히스토리
   - `ab_test_config.py` - A/B 테스트 설정
@@ -89,6 +90,7 @@
   - `market_data.py` - 시장 데이터
   - `financial.py` - 재무 데이터
   - `match.py` - 뉴스-주가 매칭
+  - `public_preview_link.py` - 공개 프리뷰 링크 (UUID 기반)
 - `migrations/` - 데이터베이스 마이그레이션 스크립트 (Alembic 스타일)
 - `repositories/` - 데이터 접근 레이어
 

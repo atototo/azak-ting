@@ -32,10 +32,18 @@
 ### 평가 & 모델
 - `GET /api/evaluations` - 모델 평가 결과
 - `GET /api/models` - 사용 가능한 모델 목록
+- `POST /api/models` - 모델 추가 (관리자)
+- `PUT /api/models/{id}` - 모델 수정 (관리자)
 
 ### A/B 테스트
 - `GET /api/ab-test/config` - A/B 테스트 설정
 - `POST /api/ab-test/config` - A/B 테스트 활성화/비활성화
+
+### 공개 프리뷰 링크
+- `POST /api/admin/preview-links` - 홍보 링크 생성 (관리자 전용, UUID 기반)
+- `GET /api/public-preview/{link_id}` - 링크로 종목 코드 조회 (인증 불필요)
+- `GET /api/admin/preview-links/{stock_code}` - 종목별 링크 목록 조회 (관리자)
+- `DELETE /api/admin/preview-links/{link_id}` - 링크 삭제 (관리자)
 
 > 상세한 API 명세는 `docs/api/contracts-backend.md` 참조
 
@@ -58,9 +66,10 @@
 - `stocks.py` - 종목 조회
 - `stock_management.py` - 종목 관리 (추가/수정)
 - `ab_test.py` - A/B 테스트 설정
-- `models.py` - 모델 관리
+- `models.py` - 모델 관리 (normal/reasoning 모델 지원)
 - `evaluations.py` - 모델 평가 조회
 - `statistics.py` - 통계 API
+- `preview_links.py` - 공개 프리뷰 링크 관리 (블로그/SNS 홍보용)
 
 ## 관련 문서
 

@@ -118,7 +118,9 @@
 
 ### 🔄 업데이트 이력
 - [업데이트 목록](./updates/README.md)
-- [Reasoning Model Support (2025-11-21)](./updates/2025-11-21-reasoning-model-support.md) - OpenAI reasoning 모델 지원 추가
+- [공개 프리뷰 링크 시스템 (2025-11-21)](./updates/2025-11-21-public-preview-link-system.md) - 블로그/SNS 홍보용 UUID 기반 공개 링크, StockDetailView 공통 컴포넌트 추출 (1369줄 감소)
+- [Reasoning Model Support (2025-11-21)](./updates/2025-11-21-reasoning-model-support.md) - OpenAI reasoning 모델(gpt-5-mini, o1, o3) 지원 추가, model_type enum
+- [통합 리포트 생성 아키텍처 (2025-11-21)](./updates/2025-11-21-unified-report-architecture.md) - DB + Prediction 데이터 통합, 단일 진입점으로 일관성 보장 (436줄 제거)
 
 ### 📚 레거시 문서 (참고용)
 - [레거시 문서 목록](./legacy/README.md)

@@ -87,6 +87,30 @@
   - 마지막 업데이트 시간
 - **스타일**: Tailwind CSS 뱃지
 
+#### `StockDetailView.tsx` ⭐ **신규 공통 컴포넌트**
+- **역할**: 종목 상세 정보 표시 (공통 컴포넌트로 추출, 1369줄 감소)
+- **기능**:
+  - 종목 기본 정보 및 현재가
+  - 주가 차트 (Recharts)
+  - AI 종합 투자 리포트
+  - 최근 뉴스 & AI 분석
+  - 시장 동향 통계
+- **Props**:
+  - `data`: 종목 상세 데이터
+  - `abConfig`: A/B 테스트 설정 (옵션)
+  - `showBackButton`: 뒤로가기 버튼 표시 여부 (기본값: false)
+  - `showForceUpdate`: 리포트 업데이트 버튼 표시 여부 (기본값: false)
+  - `onForceUpdate`: 업데이트 핸들러 (옵션)
+  - `updating`: 업데이트 중 상태 (옵션)
+  - `updateMessage`: 업데이트 메시지 (옵션)
+- **사용 위치**:
+  - `/stocks/[stockCode]/page.tsx` (인증 필요, 전체 기능)
+  - `/public/[linkId]/page.tsx` (인증 불필요, 제한된 기능)
+- **리팩토링 효과**:
+  - 코드 중복 제거: 1369줄 감소
+  - UI 일관성 보장: 두 페이지가 항상 동일한 UI
+  - 유지보수 향상: UI 수정 시 1곳만 수정
+
 ### 평가 관련 컴포넌트 (`app/components/evaluations/`)
 
 #### `MetricBreakdownChart.tsx`
@@ -116,11 +140,26 @@
 
 ### 종목 상세 (`app/stocks/[stockCode]/page.tsx`)
 
-- **StockHeader**: 종목 헤더 (이름, 현재가, 등락률)
-- **StockChart**: 주가 차트 (공통 컴포넌트 재사용)
-- **NewsImpact**: 뉴스 임팩트 (공통 컴포넌트 재사용)
-- **PredictionCard**: AI 예측 카드
-- **FinancialRatios**: 재무 비율 표시
+**리팩토링**: StockDetailView 공통 컴포넌트 사용 (1107줄 → 449줄, 59% 감소)
+
+- **StockDetailView**: 종목 상세 UI (공통 컴포넌트)
+  - Props: `showBackButton={true}`, `showForceUpdate={true}`
+- **데이터 페칭**: useEffect로 종목 데이터 로드
+- **상태 관리**: 로컬 상태로 업데이트 관리
+
+### 공개 프리뷰 (`app/public/[linkId]/page.tsx`) ⭐ **신규 페이지**
+
+**UUID 기반 공개 프리뷰 링크 시스템 (블로그/SNS 홍보용)**
+
+- **StockDetailView**: 종목 상세 UI (공통 컴포넌트 재사용)
+  - Props: `showBackButton={false}`, `showForceUpdate={false}`
+- **2단계 데이터 페칭**:
+  1. UUID → stock_code 조회 (`/api/public-preview/{linkId}`)
+  2. stock_code → 종목 상세 조회 (`/api/stocks/{stockCode}`)
+- **특징**:
+  - 인증 불필요 (middleware에서 `/public/*` 우회)
+  - URL에 종목코드 노출 안 됨 (보안)
+  - 관리자 전용 버튼 미표시
 
 ### 관리자 평가 (`app/admin/evaluations/page.tsx`)
 
