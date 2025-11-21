@@ -1034,6 +1034,217 @@ def build_adaptive_analysis_prompt(context: Dict[str, Any]) -> str:
     return prompt
 
 
+def build_unified_prompt(context: Dict[str, Any]) -> str:
+    """
+    통합 컨텍스트 기반 적응형 프롬프트 생성 (DB + Prediction)
+
+    Args:
+        context: build_unified_context()에서 반환한 통합 컨텍스트
+
+    Returns:
+        LLM 프롬프트 문자열 (항상 동일한 JSON 응답 포맷 요구)
+    """
+    stock_code = context.get("stock_code")
+    stock_name = context.get("stock_name")
+    data_sources = context.get("data_sources", {})
+
+    # 가용 데이터 소스 목록
+    available_sources = [k for k, v in data_sources.items() if v]
+    missing_sources = [k for k, v in data_sources.items() if not v]
+
+    prompt = f"""
+당신은 전문 주식 애널리스트입니다. {stock_name}({stock_code})에 대한 투자 분석 리포트를 작성해주세요.
+
+## 📊 가용 데이터 소스
+{', '.join(available_sources) if available_sources else '없음'}
+
+## ⚠️ 누락된 데이터 소스
+{', '.join(missing_sources) if missing_sources else '없음'}
+
+## 📈 분석 데이터
+"""
+
+    # 0. 시장 지수 (KOSPI/KOSDAQ)
+    market_indices = context.get("market_indices")
+    if market_indices:
+        from backend.utils.market_index import format_market_indices
+        market_text = format_market_indices(market_indices)
+        if market_text and market_text != "시장 지수 데이터 없음":
+            prompt += f"""
+### 📊 시장 전체 동향
+{market_text}
+"""
+
+    # 1. 현재가 정보 (상세)
+    if data_sources.get("market_data"):
+        current_price = context.get("current_price", {})
+        cp = current_price.get('current_price', 0)
+        change_rate = current_price.get('change_rate', 0)
+        volume = current_price.get('volume', 0)
+        per = current_price.get('per', 'N/A')
+        pbr = current_price.get('pbr', 'N/A')
+        eps = current_price.get('eps', 'N/A')
+        bps = current_price.get('bps', 'N/A')
+        market_cap = current_price.get('market_cap', 'N/A')
+
+        prompt += f"""
+### 📊 현재 시장 데이터
+- **현재가**: {cp:,}원 (전일 대비 {change_rate:+.2f}%)
+- **거래량**: {volume:,}주
+- **PER**: {per} | **PBR**: {pbr}
+- **EPS**: {eps}원 | **BPS**: {bps}원
+- **시가총액**: {market_cap}
+"""
+
+    # 2. 투자자 수급 (상세)
+    if data_sources.get("investor_trading"):
+        investor_trading = context.get("investor_trading", [])
+        prompt += f"""
+### 💰 투자자 수급 동향 (최근 {len(investor_trading)}일)
+"""
+        for idx, it in enumerate(investor_trading, 1):
+            date = it.get('date', 'N/A')
+            foreigner = it.get('foreigner_net', 0)
+            institution = it.get('institution_net', 0)
+            individual = it.get('individual_net', 0)
+
+            foreigner_emoji = "📈" if foreigner > 0 else "📉" if foreigner < 0 else "➡️"
+            institution_emoji = "📈" if institution > 0 else "📉" if institution < 0 else "➡️"
+
+            prompt += f"{idx}. **{date}**: 외국인 {foreigner_emoji} {foreigner:+,}주 | 기관 {institution_emoji} {institution:+,}주 | 개인 {individual:+,}주\n"
+
+    # 3. 재무비율 (상세 + 추이 분석)
+    if data_sources.get("financial_ratios"):
+        financial_ratios = context.get("financial_ratios", [])
+        prompt += f"""
+### 📈 재무비율 추이 (최근 {len(financial_ratios)}개 분기)
+"""
+        for idx, fr in enumerate(financial_ratios, 1):
+            yymm = fr.get('stac_yymm', 'N/A')
+            roe = fr.get('roe_val', 'N/A')
+            eps = fr.get('eps', 'N/A')
+            bps = fr.get('bps', 'N/A')
+            debt_ratio = fr.get('lblt_rate', 'N/A')
+
+            # ROE 이모지
+            if isinstance(roe, (int, float)):
+                roe_emoji = "🟢" if roe > 10 else "🟡" if roe > 0 else "🔴"
+            else:
+                roe_emoji = "⚪"
+
+            prompt += f"{idx}. **{yymm}**: {roe_emoji} ROE {roe}% | EPS {eps}원 | BPS {bps}원 | 부채비율 {debt_ratio}%\n"
+
+    # 4. 상품정보
+    if data_sources.get("product_info"):
+        product_info = context.get("product_info", {})
+        prompt += f"""
+### 🏢 종목 기본정보
+- **업종**: {product_info.get('prdt_clsf_name', 'N/A')}
+- **위험등급**: {product_info.get('prdt_risk_grad_cd', 'N/A')} (1등급=최고 안전)
+"""
+
+    # 5. 기술적 지표 (있을 경우)
+    technical_indicators = context.get("technical_indicators")
+    if data_sources.get("technical_indicators") and technical_indicators:
+        prompt += f"""
+### 📉 기술적 지표
+{_format_technical_summary(technical_indicators)}
+"""
+
+    # 6. AI 예측 분석 (신규 추가) ← 핵심!
+    if data_sources.get("predictions"):
+        predictions_data = context.get("predictions", {})
+        stats = predictions_data.get("statistics", {})
+        raw_data = predictions_data.get("raw_data", [])
+
+        total = stats.get("total", 0)
+        positive = stats.get("positive", 0)
+        negative = stats.get("negative", 0)
+        neutral = stats.get("neutral", 0)
+        high_impact = stats.get("high_impact", 0)
+        avg_sentiment = stats.get("avg_sentiment", 0)
+        avg_relevance = stats.get("avg_relevance", 0)
+
+        # 긍정/부정 비율 계산
+        positive_pct = (positive / total * 100) if total > 0 else 0
+        negative_pct = (negative / total * 100) if total > 0 else 0
+
+        prompt += f"""
+### 🤖 AI 예측 분석 (최근 7일)
+- **총 예측 건수**: {total}건
+- **감성 분포**: 긍정 {positive}건 ({positive_pct:.1f}%) | 부정 {negative}건 ({negative_pct:.1f}%) | 중립 {neutral}건
+- **고영향 예측**: {high_impact}건
+- **평균 감성 점수**: {avg_sentiment:.2f} (-1.0 ~ +1.0)
+- **평균 관련성**: {avg_relevance:.2f}
+
+"""
+        # 주요 예측 샘플 (최근 5건)
+        if raw_data:
+            prompt += "**주요 예측 샘플 (최근 5건)**:\n"
+            for idx, pred in enumerate(raw_data[:5], 1):
+                reasoning = pred.get('reasoning', 'N/A')
+                direction = pred.get('sentiment_direction', 'N/A')
+                impact = pred.get('impact_level', 'N/A')
+                direction_emoji = "📈" if direction == "positive" else "📉" if direction == "negative" else "➡️"
+                prompt += f"{idx}. {direction_emoji} {direction.upper()} ({impact}): {reasoning[:100]}...\n"
+
+    # 현재가 추출 (목표가 계산용)
+    base_price = context.get("current_price", {}).get("current_price", 0)
+
+    prompt += f"""
+
+---
+
+위 데이터를 바탕으로 **투자자 관점**에서 다음 형식의 JSON으로 응답하세요:
+
+```json
+{{
+  "overall_summary": "현재 시점에서 이 종목에 대한 전체적인 판단 (2-3문장, 핵심만)",
+  "short_term_scenario": "단기 투자자(1일~1주) 관점: 재무비율 최근 분기 실적, 현재 주가 수준, 투자자 수급(있으면), AI 예측 트렌드(있으면) 기반 구체적 매매 전략. 목표가/손절가 명시.",
+  "medium_term_scenario": "중기 투자자(1주~1개월) 관점: 최근 3개 분기 재무 추이, 업종 위치, 기술적 지표(있으면), AI 예측 패턴(있으면) 기반 전략. 구체적 목표가와 예상 수익률.",
+  "long_term_scenario": "장기 투자자(1개월 이상) 관점: 연간 ROE/EPS 추이, 산업 전망, 시장 동향 기반 이벤트 분석. 펀더멘털 중심 장기 보유 전략.",
+  "risk_factors": ["리스크 요인 1 (구체적)", "리스크 요인 2", "리스크 요인 3"],
+  "opportunity_factors": ["기회 요인 1 (구체적)", "기회 요인 2", "기회 요인 3"],
+  "recommendation": "최종 추천: 명확한 액션(매수/관망/매도) + 간결한 이유 (1-2문장)",
+  "price_targets": {{
+    "base_price": {base_price if base_price else 'null'},
+    "short_term_target": 숫자만 (목표가),
+    "short_term_support": 숫자만 (손절가),
+    "medium_term_target": 숫자만 (목표가),
+    "medium_term_support": 숫자만 (손절가),
+    "long_term_target": 숫자만 (목표가)
+  }},
+  "confidence_level": "high/medium/low 중 하나 (가용 데이터 완전도에 따라)",
+  "limitations": ["분석의 한계점 1 (누락된 데이터 명시)", "한계점 2"]
+}}
+```
+
+**중요 지침**:
+1. **재무비율 우선 활용**: ROE, EPS, 부채비율 추이를 핵심 지표로 분석
+2. **투자자 수급 반영**: 외국인/기관 순매수 패턴을 투자 전략에 반영 (데이터 있을 시)
+3. **AI 예측 트렌드 활용**: 긍정/부정 비율과 고영향 예측을 단기/중기 전략에 반영 (데이터 있을 시)
+4. **시장 동향 영향도 고려**: 최근 시장 동향의 감성/영향도를 sentiment에 반영 (데이터 있을 시)
+5. **기술적 지표 결합**: 이동평균, RSI 등 기술적 분석 활용 (데이터 있을 시)
+6. **구체적인 수치와 기간 명시**: 목표가, 손절가, 예상 수익률을 숫자로 제시
+7. **현실적 목표가 설정**: 현재가 대비 ±10~30% 범위 내에서 합리적으로
+8. **리스크와 기회는 각각 최대 3개**까지만
+9. **간결하고 명확하게** (불필요한 수식어 제거)
+10. **누락 데이터 처리**: limitations에 명시하고, 가용 데이터만으로 최선의 분석 제공
+11. **confidence_level과 limitations는 필수**: 항상 포함해야 함
+
+**⚠️ 출력 시 금지 용어**:
+- "뉴스", "언론", "기사", "언론사" 등의 용어 사용 금지
+- 대신 "시장 동향", "시장 정보", "공시 정보", "시장 분석", "동향 자료" 등 중립적 표현 사용
+
+**데이터 우선순위**:
+- Tier 1 (필수): 현재가, 재무비율, 상품정보
+- Tier 2 (중요): 투자자 수급, 기술적 지표, AI 예측
+- Tier 3 (선택): 시장 동향, 공시
+"""
+
+    return prompt
+
+
 def _format_technical_summary(technical: Dict[str, Any]) -> str:
     """기술적 지표 요약 포맷팅 (간략 버전)"""
     if not technical:

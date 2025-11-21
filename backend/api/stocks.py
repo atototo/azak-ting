@@ -18,7 +18,6 @@ from backend.db.models.prediction import Prediction
 from backend.utils.stock_mapping import get_stock_mapper
 from backend.services.stock_analysis_service import (
     get_stock_analysis_summary,
-    update_stock_analysis_summary,
 )
 from backend.services.price_service import get_current_price, get_market_status
 

@@ -8,7 +8,7 @@ import json
 import re
 import asyncio
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -77,8 +77,8 @@ async def trigger_initial_analysis(stock_code: str, db: Session):
             save_financial_ratios(db, stock_code, financial_ratios_data)
             logger.info(f"✅ Saved financial ratios for {stock_code}")
 
-        # 초기 리포트 생성 (US-004: DB 기반, 전체 모델)
-        reports = await generate_stock_report(stock_code, db)
+        # 초기 리포트 생성 (통합 함수 사용)
+        reports = await generate_unified_stock_report(stock_code, db)
 
         if reports:
             logger.info(f"✅ Initial DB-based reports generated for {stock_code} ({len(reports)} models)")
@@ -99,19 +99,23 @@ async def trigger_initial_analysis(stock_code: str, db: Session):
             logger.error(f"❌ Placeholder report failed for {stock_code}: {e2}")
 
 
-async def generate_stock_report(
+async def generate_unified_stock_report(
     stock_code: str,
     db: Session,
     force_update: bool = False
 ) -> List[StockAnalysisSummary]:
     """
-    종목 리포트 생성 - DB 기반, 전체 모델 지원 (US-004 통합 버전)
+    통합 종목 리포트 생성 - DB + Prediction 통합, 전체 모델 지원
+
+    모든 가용 데이터를 수집하고, 동적으로 리포트 생성
+    - 신규 종목 (DB만): DB 데이터로 초기 리포트 생성
+    - 기존 종목 (DB + Prediction): 모든 데이터를 활용한 고품질 리포트
 
     프로세스:
-    1. DB에서 컨텍스트 구축 (현재가, 투자자수급, 재무비율, 상품정보, 뉴스)
+    1. 통합 컨텍스트 구축 (DB + Prediction)
     2. 데이터 가용성 확인
-    3. 적응형 프롬프트 생성
-    4. 모든 활성 모델에 대해 리포트 생성
+    3. 통합 프롬프트 생성
+    4. 모든 활성 모델에 대해 리포트 생성 (병렬)
     5. 메타데이터 포함 (data_sources_used, limitations, confidence_level)
 
     Args:
@@ -122,11 +126,11 @@ async def generate_stock_report(
     Returns:
         생성된 StockAnalysisSummary 리스트 (각 모델별 1개씩)
     """
-    logger.info(f"📊 Generating stock report for {stock_code}")
+    logger.info(f"📊 Generating unified stock report for {stock_code}")
 
     try:
-        # 1. DB에서 컨텍스트 구축
-        context = await build_analysis_context_from_db(stock_code, db)
+        # 1. 통합 컨텍스트 구축 (DB + Prediction)
+        context = await build_unified_context(stock_code, db)
 
         # 2. 데이터 가용성 확인
         data_sources = context.get("data_sources", {})
@@ -136,9 +140,11 @@ async def generate_stock_report(
             logger.warning(f"No data available for {stock_code}")
             return []
 
-        # 3. 적응형 프롬프트 생성
-        from backend.llm.investment_report import build_adaptive_analysis_prompt
-        prompt = build_adaptive_analysis_prompt(context)
+        logger.info(f"✅ Data sources available: {available_count}/8")
+
+        # 3. 통합 프롬프트 생성
+        from backend.llm.investment_report import build_unified_prompt
+        prompt = build_unified_prompt(context)
 
         # 4. 모든 활성 모델 조회
         active_models: List[Model] = db.query(Model).filter(Model.is_active == True).all()
@@ -149,7 +155,23 @@ async def generate_stock_report(
 
         logger.info(f"📋 Generating reports for {len(active_models)} active models")
 
-        # 5. 각 모델별로 리포트 생성 (병렬 처리)
+        # 5. Prediction 통계 (있으면 포함)
+        predictions_data = context.get("predictions")
+        if predictions_data:
+            stats = predictions_data.get("statistics", {})
+            total_predictions = stats.get("total", 0)
+            up_count = stats.get("positive", 0)
+            down_count = stats.get("negative", 0)
+            hold_count = stats.get("neutral", 0)
+            logger.info(f"📈 Predictions: {total_predictions}건 (positive: {up_count}, negative: {down_count}, neutral: {hold_count})")
+        else:
+            total_predictions = 0
+            up_count = 0
+            down_count = 0
+            hold_count = 0
+            logger.info("ℹ️ No predictions data")
+
+        # 6. 각 모델별로 리포트 생성 (병렬 처리)
         from backend.llm.investment_report import get_report_generator
         generator = get_report_generator()
 
@@ -165,7 +187,7 @@ async def generate_stock_report(
                 messages = [
                     {
                         "role": "system",
-                        "content": "당신은 한국 주식 시장의 베테랑 애널리스트입니다. DB 데이터 기반으로 명확하고 실용적인 투자 리포트를 작성합니다.",
+                        "content": "당신은 한국 주식 시장의 베테랑 애널리스트입니다. DB 데이터와 AI 예측을 통합하여 명확하고 실용적인 투자 리포트를 작성합니다.",
                     },
                     {"role": "user", "content": prompt},
                 ]
@@ -174,10 +196,11 @@ async def generate_stock_report(
                     "model": model.model_identifier,
                     "messages": messages,
                     "temperature": 0.4,
-                    "max_tokens": 1000,
+                    "max_tokens": 4000 if model.model_type == "reasoning" else 1000,
                 }
 
-                if model.provider != "openrouter":
+                # 일반 모델만 response_format 사용 (reasoning 모델 제외)
+                if model.provider != "openrouter" and model.model_type != "reasoning":
                     kwargs["response_format"] = {"type": "json_object"}
 
                 # 동기 API를 asyncio.to_thread로 비동기 처리
@@ -190,8 +213,19 @@ async def generate_stock_report(
                 if model.provider == "openrouter":
                     result_text = _extract_openrouter_json(result_text)
 
+                # 디버깅: 응답 내용 검증 및 로깅
+                if not result_text or not result_text.strip():
+                    logger.error(f"  ❌ {model.name}: Empty response received")
+                    raise ValueError(f"Empty response from {model.name}")
+
+                logger.debug(f"  📝 {model.name} response (first 200 chars): {result_text[:200]}")
+
                 # JSON 파싱
-                report_data = json.loads(result_text)
+                try:
+                    report_data = json.loads(result_text)
+                except json.JSONDecodeError as e:
+                    logger.error(f"  ❌ {model.name} JSON parse error. Response: {result_text[:500]}")
+                    raise
 
                 # StockAnalysisSummary 객체 생성
                 summary = StockAnalysisSummary(
@@ -205,11 +239,14 @@ async def generate_stock_report(
                     opportunity_factors=json.dumps(report_data.get("opportunity_factors", [])) if isinstance(report_data.get("opportunity_factors"), list) else report_data.get("opportunity_factors"),
                     recommendation=report_data.get("recommendation"),
                     confidence_level=report_data.get("confidence_level", "medium"),
-                    data_sources_used=data_sources,
+                    data_sources_used=data_sources,  # 통합 data_sources
                     limitations=report_data.get("limitations", []),
-                    data_completeness_score=available_count / 6.0,  # 6개 데이터 소스
-                    total_predictions=0,  # DB 기반 리포트는 예측 아님
-                    based_on_prediction_count=0,
+                    data_completeness_score=available_count / 8.0,  # 8개 데이터 소스 (predictions 추가)
+                    total_predictions=total_predictions,
+                    based_on_prediction_count=total_predictions,
+                    up_count=up_count,
+                    down_count=down_count,
+                    hold_count=hold_count,
                     # 가격 목표치 (있으면 포함)
                     base_price=report_data.get("price_targets", {}).get("base_price"),
                     short_term_target_price=report_data.get("price_targets", {}).get("short_term_target"),
@@ -219,7 +256,7 @@ async def generate_stock_report(
                     long_term_target_price=report_data.get("price_targets", {}).get("long_term_target"),
                 )
 
-                logger.info(f"  ✅ {model.name} report created (confidence={summary.confidence_level})")
+                logger.info(f"  ✅ {model.name} report created (confidence={summary.confidence_level}, predictions={total_predictions})")
                 return {"success": True, "model": model, "summary": summary}
 
             except Exception as model_error:
@@ -246,40 +283,41 @@ async def generate_stock_report(
 
             if result.get("success"):
                 summary = result["summary"]
+
+                # 기존 리포트 삭제 또는 업데이트 (모델별)
+                existing = db.query(StockAnalysisSummary).filter(
+                    StockAnalysisSummary.stock_code == stock_code,
+                    StockAnalysisSummary.model_id == summary.model_id
+                ).first()
+
+                if existing:
+                    # 기존 리포트 삭제
+                    db.delete(existing)
+                    db.flush()
+
                 db.add(summary)
+                db.commit()
+                db.refresh(summary)
                 created_summaries.append(summary)
+                logger.info(f"  💾 {result['model'].name} report saved to DB")
             else:
-                failed_models.append(result["model"].name)
+                failed_models.append(result.get("model").name)
+                logger.error(f"  ❌ {result.get('model').name} failed: {result.get('error')}")
 
-        # 모든 모델 실패 시
-        if not created_summaries:
-            logger.error(f"❌ All models failed for {stock_code} (failed: {', '.join(failed_models)})")
-            return []
+        # 최종 결과
+        if created_summaries:
+            logger.info(f"✅ Unified report generation complete: {len(created_summaries)}/{len(active_models)} models succeeded")
+        else:
+            logger.error(f"❌ All models failed for {stock_code}")
 
-        # DB 커밋
-        db.commit()
-        for summary in created_summaries:
-            db.refresh(summary)
-
-        logger.info(f"✅ Stock report completed: {len(created_summaries)}/{len(active_models)} models succeeded")
         if failed_models:
-            logger.warning(f"⚠️  Failed models: {', '.join(failed_models)}")
+            logger.warning(f"⚠️ Failed models: {', '.join(failed_models)}")
 
         return created_summaries
 
     except Exception as e:
-        logger.error(f"Failed to generate stock report for {stock_code}: {e}", exc_info=True)
-        db.rollback()
+        logger.error(f"❌ Unified report generation failed for {stock_code}: {e}", exc_info=True)
         return []
-
-
-async def generate_db_based_report(stock_code: str, db: Session) -> Optional[StockAnalysisSummary]:
-    """
-    [DEPRECATED] 하위 호환성을 위해 유지
-    generate_stock_report() 사용 권장
-    """
-    reports = await generate_stock_report(stock_code, db)
-    return reports[0] if reports else None
 
 
 async def create_placeholder_report(stock_code: str, db: Session, error_msg: str):
@@ -452,6 +490,132 @@ async def build_analysis_context_from_db(stock_code: str, db: Session) -> Dict[s
     return context
 
 
+async def build_unified_context(stock_code: str, db: Session) -> Dict[str, Any]:
+    """
+    통합 분석 컨텍스트 생성 - DB 데이터 + Prediction 데이터
+
+    모든 가용 데이터를 수집하고, 없는 데이터는 None/[]로 반환
+
+    Returns:
+        {
+            "stock_code": "005930",
+            "stock_name": "삼성전자",
+
+            # DB 데이터
+            "current_price": {...} or None,
+            "investor_trading": [...] or [],
+            "financial_ratios": [...] or [],
+            "product_info": {...} or None,
+            "technical_indicators": {...} or None,
+            "market_indices": {...} or None,
+            "news": [...] or [],
+
+            # Prediction 데이터
+            "predictions": {
+                "raw_data": [...],
+                "statistics": {
+                    "total": 15,
+                    "positive": 8,
+                    "negative": 5,
+                    "neutral": 2,
+                    "high_impact": 3,
+                    "medium_impact": 8,
+                    "low_impact": 4,
+                    "avg_sentiment": 0.35,
+                    "avg_relevance": 0.78
+                }
+            } or None,
+
+            # 데이터 가용성 추적
+            "data_sources": {
+                "market_data": True,
+                "investor_trading": True,
+                "financial_ratios": True,
+                "product_info": True,
+                "technical_indicators": False,
+                "market_indices": True,
+                "news": True,
+                "predictions": True
+            }
+        }
+    """
+    logger.info(f"🔄 Building unified context for {stock_code}")
+
+    # 1. DB 데이터 수집 (기존 함수 활용)
+    context = await build_analysis_context_from_db(stock_code, db)
+
+    # 2. Prediction 데이터 추가 수집 (최근 7일)
+    seven_days_ago = datetime.now() - timedelta(days=7)
+    predictions = (
+        db.query(Prediction)
+        .filter(
+            Prediction.stock_code == stock_code,
+            Prediction.created_at >= seven_days_ago
+        )
+        .order_by(Prediction.created_at.desc())
+        .all()
+    )
+
+    if predictions:
+        # 통계 계산
+        total = len(predictions)
+
+        # 감성 방향 분포 (v2.0 필드 우선)
+        positive_count = sum(1 for p in predictions if p.sentiment_direction == "positive")
+        negative_count = sum(1 for p in predictions if p.sentiment_direction == "negative")
+        neutral_count = sum(1 for p in predictions if p.sentiment_direction == "neutral")
+
+        # 영향도 레벨 분포
+        high_impact = sum(1 for p in predictions if p.impact_level in ["high", "critical"])
+        medium_impact = sum(1 for p in predictions if p.impact_level == "medium")
+        low_impact = sum(1 for p in predictions if p.impact_level == "low")
+
+        # 평균 감성 점수 및 관련성 점수
+        sentiment_scores = [p.sentiment_score for p in predictions if p.sentiment_score is not None]
+        avg_sentiment = sum(sentiment_scores) / len(sentiment_scores) if sentiment_scores else 0.0
+
+        relevance_scores = [p.relevance_score for p in predictions if p.relevance_score is not None]
+        avg_relevance = sum(relevance_scores) / len(relevance_scores) if relevance_scores else 0.0
+
+        # Prediction 데이터를 context에 추가
+        context["predictions"] = {
+            "raw_data": [
+                {
+                    "sentiment_direction": p.sentiment_direction,
+                    "sentiment_score": p.sentiment_score,
+                    "impact_level": p.impact_level,
+                    "relevance_score": p.relevance_score,
+                    "reasoning": p.reasoning,
+                    "created_at": p.created_at.isoformat() if p.created_at else None,
+                }
+                for p in predictions[:20]  # 최근 20건만 상세 포함
+            ],
+            "statistics": {
+                "total": total,
+                "positive": positive_count,
+                "negative": negative_count,
+                "neutral": neutral_count,
+                "high_impact": high_impact,
+                "medium_impact": medium_impact,
+                "low_impact": low_impact,
+                "avg_sentiment": round(avg_sentiment, 2),
+                "avg_relevance": round(avg_relevance, 2),
+            }
+        }
+        context["data_sources"]["predictions"] = True
+        logger.info(f"✅ Predictions added: {total}건 (positive: {positive_count}, negative: {negative_count}, neutral: {neutral_count})")
+    else:
+        context["predictions"] = None
+        context["data_sources"]["predictions"] = False
+        logger.info(f"ℹ️ No predictions available for {stock_code}")
+
+    # 3. 데이터 가용성 요약
+    available_sources = [k for k, v in context["data_sources"].items() if v]
+    logger.info(f"📊 Available data sources: {', '.join(available_sources)}")
+
+    return context
+
+
 async def should_update_report(
     stock_code: str,
     db: Session,
@@ -526,216 +690,6 @@ async def should_update_report(
             )
 
     return False, f"업데이트 불필요 (시장: {market_phase}, 경과: {staleness_hours:.1f}h/{ttl_hours}h)"
-
-
-async def update_stock_analysis_summary(
-    stock_code: str,
-    db: Session,
-    force_update: bool = False
-) -> Optional[StockAnalysisSummary]:
-    """
-    종목 투자 분석 요약 업데이트 (LLM 기반)
-
-    Args:
-        stock_code: 종목 코드
-        db: Database session
-        force_update: 강제 업데이트 여부 (기본값: False)
-
-    Returns:
-        StockAnalysisSummary 인스턴스 또는 None (실패 시)
-    """
-    try:
-        # 1. 최근 30일 예측 데이터 조회 (최대 20건)
-        predictions = (
-            db.query(Prediction)
-            .filter(Prediction.stock_code == stock_code)
-            .order_by(Prediction.created_at.desc())
-            .limit(20)
-            .all()
-        )
-
-        if not predictions:
-            logger.warning(f"종목 {stock_code}에 대한 예측 데이터가 없습니다.")
-            return None
-
-        # 2. 현재가 정보 조회
-        current_price_obj = (
-            db.query(StockPrice)
-            .filter(StockPrice.stock_code == stock_code)
-            .order_by(StockPrice.date.desc())
-            .first()
-        )
-
-        current_price = None
-        if current_price_obj:
-            # 전일 대비 변동률 계산
-            previous_price_obj = (
-                db.query(StockPrice)
-                .filter(
-                    StockPrice.stock_code == stock_code,
-                    StockPrice.date < current_price_obj.date
-                )
-                .order_by(StockPrice.date.desc())
-                .first()
-            )
-
-            change_rate = 0.0
-            if previous_price_obj and previous_price_obj.close > 0:
-                change_rate = ((current_price_obj.close - previous_price_obj.close) / previous_price_obj.close) * 100
-
-            current_price = {
-                "close": current_price_obj.close,
-                "change_rate": round(change_rate, 2),
-            }
-
-        # 3. 기존 요약 조회
-        existing_summary = (
-            db.query(StockAnalysisSummary)
-            .filter(StockAnalysisSummary.stock_code == stock_code)
-            .order_by(StockAnalysisSummary.last_updated.desc())
-            .first()
-        )
-
-        # 4. 업데이트 필요 여부 확인 (시장 시간 기반 다중 트리거)
-        should_update, reason = await should_update_report(
-            stock_code, db, existing_summary, predictions, current_price, force_update
-        )
-
-        if not should_update:
-            logger.info(f"종목 {stock_code}의 분석 요약이 최신 상태입니다. ({reason})")
-            return existing_summary
-
-        logger.info(f"종목 {stock_code} 업데이트 시작: {reason}")
-
-        # 5. LLM 리포트 생성 (모든 활성 모델 대상)
-        active_models: List[Model] = (
-            db.query(Model).filter(Model.is_active == True).all()
-        )
-
-        if not active_models:
-            logger.error("활성화된 LLM 모델이 없습니다. 리포트 생성을 중단합니다.")
-            return None
-
-        generator = get_report_generator()
-        report_data = generator._prepare_report_data(
-            stock_code, predictions, current_price
-        )
-        prompt = generator._build_prompt(report_data)
-
-        total_predictions = len(predictions)
-        up_count = sum(1 for p in predictions if p.direction == "up")
-        down_count = sum(1 for p in predictions if p.direction == "down")
-        hold_count = sum(1 for p in predictions if p.direction == "hold")
-        confidences = [p.confidence for p in predictions if p.confidence]
-        avg_confidence = sum(confidences) / len(confidences) if confidences else None
-
-        created_summaries: List[StockAnalysisSummary] = []
-        failed_models = []
-
-        for model in active_models:
-            try:
-                logger.info(
-                    f"모델 {model.name} ({model.provider}/{model.model_identifier}) 리포트 생성 시작"
-                )
-                report_payload = _generate_report_for_model(
-                    generator=generator,
-                    model=model,
-                    prompt=prompt,
-                )
-
-                if not report_payload:
-                    logger.warning(
-                        f"⚠️ 모델 {model.name} 리포트 생성 실패 (빈 응답): {stock_code}"
-                    )
-                    failed_models.append(model.name)
-                    continue
-
-                summary = _build_summary_from_payload(
-                    stock_code=stock_code,
-                    model=model,
-                    report_payload=report_payload,
-                    total_predictions=total_predictions,
-                    up_count=up_count,
-                    down_count=down_count,
-                    hold_count=hold_count,
-                    avg_confidence=avg_confidence,
-                )
-                db.add(summary)
-                created_summaries.append(summary)
-                logger.info(
-                    f"  ✅ 모델 {model.name} 리포트 생성 완료 (stock={stock_code})"
-                )
-            except Exception as model_error:
-                logger.error(
-                    f"❌ 모델 {model.name} 리포트 생성 중 예외 발생: {model_error}",
-                    exc_info=True
-                )
-                failed_models.append(model.name)
-                continue
-
-        # 모든 모델 실패 시 기존 리포트 유지 (롤백하지 않음)
-        if not created_summaries:
-            logger.error(
-                f"❌ 모든 모델 리포트 생성 실패: {stock_code} "
-                f"(실패 모델: {', '.join(failed_models)})"
-            )
-            # 기존 리포트가 있으면 유지하기 위해 롤백하지 않음
-            db.rollback()
-            # 기존 리포트 반환 (있으면)
-            if existing_summary:
-                logger.warning(
-                    f"⚠️ 기존 리포트 유지: {stock_code} "
-                    f"(마지막 업데이트: {existing_summary.last_updated})"
-                )
-                return existing_summary
-            return None
-
-        # DB 커밋 시도 (재시도 로직 포함)
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                db.commit()
-                for summary in created_summaries:
-                    db.refresh(summary)
-
-                # 일부 모델 실패 시 경고 로그
-                if failed_models:
-                    logger.warning(
-                        f"⚠️ 일부 모델 실패 (성공: {len(created_summaries)}/{len(active_models)}): "
-                        f"{stock_code} (실패 모델: {', '.join(failed_models)})"
-                    )
-                else:
-                    logger.info(
-                        f"✅ 모든 모델 리포트 생성 성공 ({len(created_summaries)}/{len(active_models)}): {stock_code}"
-                    )
-
-                return created_summaries[0]
-            except Exception as commit_error:
-                db.rollback()
-                if attempt < max_retries - 1:
-                    logger.warning(
-                        f"⚠️ DB 커밋 실패 (재시도 {attempt + 1}/{max_retries}): {commit_error}"
-                    )
-                    # 짧은 대기 후 재시도
-                    import time
-                    time.sleep(0.1 * (attempt + 1))
-                else:
-                    logger.error(
-                        f"❌ DB 커밋 최종 실패 ({max_retries}회 시도): {commit_error}",
-                        exc_info=True
-                    )
-                    # 기존 리포트 반환
-                    if existing_summary:
-                        logger.warning(
-                            f"⚠️ 커밋 실패로 기존 리포트 유지: {stock_code}"
-                        )
-                        return existing_summary
-                    return None
-
-    except Exception as e:
-        logger.error(f"종목 {stock_code}의 분석 요약 업데이트 실패: {e}", exc_info=True)
-        db.rollback()
-        return None
 
 
 def get_stock_analysis_summary(
@@ -834,10 +788,11 @@ def _generate_report_for_model(
             "model": model.model_identifier,
             "messages": messages,
             "temperature": 0.4,
-            "max_tokens": 1000,
+            "max_tokens": 4000 if model.model_type == "reasoning" else 1000,
         }
 
-        if model.provider != "openrouter":
+        # 일반 모델만 response_format 사용 (reasoning 모델 제외)
+        if model.provider != "openrouter" and model.model_type != "reasoning":
             kwargs["response_format"] = {"type": "json_object"}
 
         response = client.chat.completions.create(**kwargs)
@@ -987,6 +942,27 @@ def _format_summary_output(
         except:
             data_sources_used = None
 
+    # 백엔드 → 프론트엔드 키 매핑 및 배열 변환
+    backend_to_frontend_keys = {
+        "market_data": "stock_prices",
+        "investor_trading": "investor_flow",
+        "financial_ratios": "financial_metrics",
+        "product_info": "company_info",
+        "technical_indicators": "technical_indicators",
+        "news": "market_trends",
+        "predictions": None,  # 프론트엔드에 표시 안함
+    }
+
+    # dict -> array 변환 (True인 값만 추출하고 프론트엔드 키로 매핑)
+    data_sources_array = []
+    if isinstance(data_sources_used, dict):
+        for backend_key, is_used in data_sources_used.items():
+            if is_used and backend_key in backend_to_frontend_keys:
+                frontend_key = backend_to_frontend_keys[backend_key]
+                if frontend_key:  # None이 아닌 경우만 추가
+                    data_sources_array.append(frontend_key)
+        data_sources_used = data_sources_array
+
     limitations = summary.limitations
     if isinstance(limitations, str):
         try:
@@ -1010,7 +986,7 @@ def _format_summary_output(
         "statistics": statistics,
         # US-004: 메타데이터 추가
         "confidence_level": summary.confidence_level,
-        "data_sources_used": data_sources_used,
+        "data_sources_used": data_sources_used,  # 이제 배열 형태
         "limitations": limitations,
         "data_completeness_score": summary.data_completeness_score,
         "meta": {

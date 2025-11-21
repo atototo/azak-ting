@@ -178,18 +178,19 @@ async def _generate_report_background(stock_code: str, stock_name: str):
     """백그라운드 리포트 생성 태스크"""
     db = SessionLocal()
     try:
-        from backend.services.stock_analysis_service import generate_stock_report
+        from backend.services.stock_analysis_service import generate_unified_stock_report
 
-        logger.info(f"🔄 [{stock_code}] {stock_name} 리포트 백그라운드 생성 시작")
+        logger.info(f"🔄 [{stock_code}] {stock_name} 통합 리포트 백그라운드 생성 시작")
 
-        reports = await generate_stock_report(
+        # 통합 리포트 생성 (DB + Prediction 자동 통합)
+        reports = await generate_unified_stock_report(
             stock_code,
             db,
             force_update=True
         )
 
         if reports:
-            logger.info(f"✅ [{stock_code}] {stock_name} 리포트 생성 완료 ({len(reports)}개 모델)")
+            logger.info(f"✅ [{stock_code}] {stock_name} 통합 리포트 생성 완료 ({len(reports)}개 모델)")
             report_generation_status[stock_code] = {
                 "status": "completed",
                 "started_at": report_generation_status[stock_code]["started_at"],
@@ -198,13 +199,13 @@ async def _generate_report_background(stock_code: str, stock_name: str):
                 "model_count": len(reports),
             }
         else:
-            logger.warning(f"❌ [{stock_code}] {stock_name} 리포트 생성 실패")
+            logger.warning(f"❌ [{stock_code}] {stock_name} 통합 리포트 생성 실패")
             report_generation_status[stock_code] = {
                 "status": "failed",
                 "started_at": report_generation_status[stock_code]["started_at"],
                 "completed_at": datetime.utcnow(),
                 "stock_name": stock_name,
-                "error": "예측 부족 또는 LLM 오류",
+                "error": "통합 리포트 생성 실패 (데이터 부족)",
             }
 
     except Exception as e:
@@ -570,7 +571,7 @@ async def force_update_stale_reports(
     """
     try:
         from backend.db.models.stock_analysis import StockAnalysisSummary
-        from backend.services.stock_analysis_service import generate_stock_report
+        from backend.services.stock_analysis_service import generate_unified_stock_report
         from backend.utils.stock_mapping import get_stock_mapper
         import asyncio
 
@@ -622,7 +623,9 @@ async def force_update_stale_reports(
 
         for stock in stale_stocks:
             try:
-                reports = await generate_stock_report(
+                # 통합 리포트 업데이트 (DB + Prediction 자동 통합)
+                logger.info(f"📊 {stock['name']} ({stock['code']}): 통합 리포트 업데이트")
+                reports = await generate_unified_stock_report(
                     stock['code'],
                     db,
                     force_update=True
@@ -630,10 +633,10 @@ async def force_update_stale_reports(
 
                 if reports:
                     success_count += 1
-                    logger.info(f"✅ {stock['name']} ({stock['code']}) 업데이트 성공 ({len(reports)}개 모델)")
+                    logger.info(f"✅ {stock['name']} ({stock['code']}) 통합 업데이트 성공 ({len(reports)}개 모델)")
                 else:
                     fail_count += 1
-                    logger.warning(f"❌ {stock['name']} ({stock['code']}) 업데이트 실패 (데이터 부족)")
+                    logger.warning(f"❌ {stock['name']} ({stock['code']}) 통합 업데이트 실패 (데이터 부족)")
 
                 # API rate limit 고려
                 await asyncio.sleep(0.5)

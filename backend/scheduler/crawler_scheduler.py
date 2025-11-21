@@ -681,7 +681,7 @@ class CrawlerScheduler:
         db = SessionLocal()
 
         try:
-            from backend.services.stock_analysis_service import generate_stock_report
+            from backend.services.stock_analysis_service import generate_unified_stock_report
 
             # 모든 활성 종목 조회 (Priority 필터 제거)
             active_stocks = db.query(Stock).filter(
@@ -695,8 +695,10 @@ class CrawlerScheduler:
 
             for stock in active_stocks:
                 try:
-                    # DB 기반 리포트 생성 (전체 모델)
-                    reports = await generate_stock_report(
+                    # 통합 리포트 생성 (DB + Prediction 자동 통합)
+                    logger.info(f"  📊 {stock.name} ({stock.code}): 통합 리포트 생성 시작")
+
+                    reports = await generate_unified_stock_report(
                         stock_code=stock.code,
                         db=db,
                         force_update=True
@@ -706,11 +708,11 @@ class CrawlerScheduler:
                         success_count += 1
                         logger.info(
                             f"  ✅ {stock.name} ({stock.code}): "
-                            f"{len(reports)}개 모델 리포트 생성 완료"
+                            f"{len(reports)}개 모델 통합 리포트 생성 완료"
                         )
                     else:
                         failed_count += 1
-                        logger.warning(f"  ⚠️  {stock.name} ({stock.code}) 리포트 생성 실패 (데이터 부족)")
+                        logger.warning(f"  ⚠️  {stock.name} ({stock.code}) 통합 리포트 생성 실패 (데이터 부족)")
 
                 except Exception as e:
                     failed_count += 1
