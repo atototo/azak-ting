@@ -104,9 +104,9 @@ class CrawlerScheduler:
         """
         모든 언론사에서 뉴스를 크롤링하고 저장합니다.
         """
-        logger.info("=" * 60)
+        logger.info("=" * 40)
         logger.info(f"🔄 뉴스 크롤링 시작 (#{self.news_total_crawls + 1})")
-        logger.info("=" * 60)
+        logger.info("=" * 40)
 
         db = SessionLocal()
         saver = NewsSaver(db)
@@ -192,7 +192,7 @@ class CrawlerScheduler:
                 else 0
             )
 
-            logger.info("=" * 60)
+            logger.info("=" * 40)
             logger.info(f"✅ 뉴스 크롤링 완료: {saved_total}건 저장, {skipped_total}건 스킵")
             logger.info(
                 f"📊 뉴스 전체 통계: 실행 {self.news_total_crawls}회, "
@@ -201,7 +201,7 @@ class CrawlerScheduler:
                 f"에러 {self.news_total_errors}회, "
                 f"성공률 {success_rate:.1f}%"
             )
-            logger.info("=" * 60)
+            logger.info("=" * 40)
 
         except Exception as e:
             self.news_total_errors += 1
@@ -215,9 +215,9 @@ class CrawlerScheduler:
         종목별로 뉴스를 검색하여 수집합니다.
         우선순위에 따라 수집량 차등 적용.
         """
-        logger.info("=" * 60)
+        logger.info("=" * 40)
         logger.info("🎯 종목별 뉴스 검색 시작")
-        logger.info("=" * 60)
+        logger.info("=" * 40)
 
         db = SessionLocal()
         saver = NewsSaver(db)
@@ -273,9 +273,9 @@ class CrawlerScheduler:
                 except Exception as e:
                     logger.error(f"   ❌ {stock.name} 검색 실패: {e}")
 
-            logger.info("=" * 60)
+            logger.info("=" * 40)
             logger.info(f"✅ 종목별 검색 완료: {saved_total}건 저장, {skipped_total}건 스킵")
-            logger.info("=" * 60)
+            logger.info("=" * 40)
 
         except Exception as e:
             logger.error(f"❌ 종목별 검색 중 오류: {e}", exc_info=True)
@@ -288,9 +288,9 @@ class CrawlerScheduler:
         DART 공시 정보를 수집합니다.
         Priority 1-2 종목만 대상 (중요 종목만)
         """
-        logger.info("=" * 60)
+        logger.info("=" * 40)
         logger.info("📋 DART 공시 수집 시작")
-        logger.info("=" * 60)
+        logger.info("=" * 40)
 
         db = SessionLocal()
         saver = NewsSaver(db)
@@ -346,9 +346,9 @@ class CrawlerScheduler:
                 except Exception as e:
                     logger.error(f"   ❌ {stock.name} 공시 수집 실패: {e}")
 
-            logger.info("=" * 60)
+            logger.info("=" * 40)
             logger.info(f"✅ DART 공시 수집 완료: {saved_total}건 저장, {skipped_total}건 스킵")
-            logger.info("=" * 60)
+            logger.info("=" * 40)
 
         except Exception as e:
             logger.error(f"❌ DART 공시 수집 중 오류: {e}", exc_info=True)
@@ -364,9 +364,9 @@ class CrawlerScheduler:
         뉴스-주가 매칭 작업을 실행합니다.
         매일 장 마감 후(15:40)에 실행됩니다.
         """
-        logger.info("=" * 60)
+        logger.info("=" * 40)
         logger.info(f"🔗 뉴스-주가 매칭 시작 (#{self.matching_total_runs + 1})")
-        logger.info("=" * 60)
+        logger.info("=" * 40)
 
         db = SessionLocal()
 
@@ -385,7 +385,7 @@ class CrawlerScheduler:
                 (self.matching_total_success / total_attempts * 100) if total_attempts > 0 else 0
             )
 
-            logger.info("=" * 60)
+            logger.info("=" * 40)
             logger.info(f"✅ 뉴스-주가 매칭 완료: 성공 {success_count}건, 실패 {fail_count}건")
             logger.info(
                 f"📊 매칭 전체 통계: 실행 {self.matching_total_runs}회, "
@@ -393,7 +393,7 @@ class CrawlerScheduler:
                 f"실패 {self.matching_total_fail}건, "
                 f"성공률 {success_rate:.1f}%"
             )
-            logger.info("=" * 60)
+            logger.info("=" * 40)
 
         except Exception as e:
             logger.error(f"❌ 뉴스-주가 매칭 중 예상치 못한 에러: {e}")
@@ -406,9 +406,9 @@ class CrawlerScheduler:
         뉴스 임베딩 작업을 실행합니다.
         매일 장 마감 후(16:00)에 실행됩니다.
         """
-        logger.info("=" * 60)
+        logger.info("=" * 40)
         logger.info(f"🔤 뉴스 임베딩 시작 (#{self.embedding_total_runs + 1})")
-        logger.info("=" * 60)
+        logger.info("=" * 40)
 
         try:
             # 일일 임베딩 실행 (배치 100건)
@@ -427,7 +427,7 @@ class CrawlerScheduler:
                 else 0
             )
 
-            logger.info("=" * 60)
+            logger.info("=" * 40)
             logger.info(f"✅ 뉴스 임베딩 완료: 성공 {success_count}건, 실패 {fail_count}건")
             logger.info(
                 f"📊 임베딩 전체 통계: 실행 {self.embedding_total_runs}회, "
@@ -435,7 +435,7 @@ class CrawlerScheduler:
                 f"실패 {self.embedding_total_fail}건, "
                 f"성공률 {success_rate:.1f}%"
             )
-            logger.info("=" * 60)
+            logger.info("=" * 40)
 
         except Exception as e:
             logger.error(f"❌ 뉴스 임베딩 중 예상치 못한 에러: {e}")
@@ -445,9 +445,9 @@ class CrawlerScheduler:
         최근 뉴스에 대해 자동으로 예측을 수행하고 텔레그램 알림을 전송합니다.
         뉴스 크롤링 직후에 실행됩니다.
         """
-        logger.info("=" * 60)
+        logger.info("=" * 40)
         logger.info(f"🔔 자동 알림 시작 (#{self.notify_total_runs + 1})")
-        logger.info("=" * 60)
+        logger.info("=" * 40)
 
         db = SessionLocal()
 
@@ -469,7 +469,7 @@ class CrawlerScheduler:
                 else 0
             )
 
-            logger.info("=" * 60)
+            logger.info("=" * 40)
             logger.info(
                 f"✅ 자동 알림 완료: 처리 {stats['processed']}건, "
                 f"성공 {stats['success']}건, 실패 {stats['failed']}건"
@@ -481,7 +481,7 @@ class CrawlerScheduler:
                 f"실패 {self.notify_total_failed}건, "
                 f"성공률 {success_rate:.1f}%"
             )
-            logger.info("=" * 60)
+            logger.info("=" * 40)
 
         except Exception as e:
             logger.error(f"❌ 자동 알림 중 예상치 못한 에러: {e}")
@@ -494,9 +494,9 @@ class CrawlerScheduler:
         KIS API로 일봉 데이터를 수집합니다.
         매일 장 마감 후(15:40)에 실행됩니다.
         """
-        logger.info("=" * 60)
+        logger.info("=" * 40)
         logger.info(f"📈 KIS 일봉 데이터 수집 시작 (#{self.kis_daily_total_runs + 1})")
-        logger.info("=" * 60)
+        logger.info("=" * 40)
 
         try:
             # KIS 일봉 수집기 가져오기
@@ -514,7 +514,7 @@ class CrawlerScheduler:
             # 성공률 계산
             success_rate = summary["success_rate"]
 
-            logger.info("=" * 60)
+            logger.info("=" * 40)
             logger.info(
                 f"✅ KIS 일봉 수집 완료: {summary['success_count']}/{summary['total_stocks']}개 종목, "
                 f"총 {summary['total_saved']}건 저장"
@@ -526,7 +526,7 @@ class CrawlerScheduler:
                 f"에러 {self.kis_daily_total_errors}회, "
                 f"성공률 {success_rate:.1f}%"
             )
-            logger.info("=" * 60)
+            logger.info("=" * 40)
 
         except Exception as e:
             self.kis_daily_total_errors += 1
@@ -537,9 +537,9 @@ class CrawlerScheduler:
         KIS API로 업종/지수 일자별 데이터를 수집합니다.
         매일 장 마감 후(18:00)에 실행됩니다.
         """
-        logger.info("=" * 60)
+        logger.info("=" * 40)
         logger.info("📊 KIS 업종/지수 일자별 데이터 수집 시작")
-        logger.info("=" * 60)
+        logger.info("=" * 40)
 
         try:
             from backend.crawlers.index_daily_collector import IndexDailyCollector
@@ -547,11 +547,11 @@ class CrawlerScheduler:
             collector = IndexDailyCollector(batch_size=5)
             result = await collector.collect_today()
 
-            logger.info("=" * 60)
+            logger.info("=" * 40)
             logger.info(
                 f"✅ 업종/지수 수집 완료: 성공 {result['collected']}건, 실패 {result['failed']}건"
             )
-            logger.info("=" * 60)
+            logger.info("=" * 40)
 
         except Exception as e:
             logger.error(f"❌ 업종/지수 수집 중 예상치 못한 에러: {e}", exc_info=True)
@@ -566,9 +566,9 @@ class CrawlerScheduler:
             logger.info("⏸️  1분봉 수집 스킵: 장 마감 (주말/공휴일 또는 시간외)")
             return
 
-        logger.info("=" * 60)
+        logger.info("=" * 40)
         logger.info(f"📊 KIS 1분봉 데이터 수집 시작 (#{self.kis_minute_total_runs + 1})")
-        logger.info("=" * 60)
+        logger.info("=" * 40)
 
         try:
             # 1분봉 수집기 실행
@@ -577,12 +577,12 @@ class CrawlerScheduler:
             # 통계 업데이트
             self.kis_minute_total_runs += 1
 
-            logger.info("=" * 60)
+            logger.info("=" * 40)
             logger.info("✅ KIS 1분봉 수집 완료")
             logger.info(
                 f"📊 KIS 1분봉 전체 통계: 실행 {self.kis_minute_total_runs}회"
             )
-            logger.info("=" * 60)
+            logger.info("=" * 40)
 
         except Exception as e:
             self.kis_minute_total_errors += 1
@@ -598,9 +598,9 @@ class CrawlerScheduler:
             logger.debug("⏸️  시장 데이터 수집 스킵: 장 마감")
             return
 
-        logger.info("=" * 60)
+        logger.info("=" * 40)
         logger.info("📊 KIS 시장 데이터 수집 시작")
-        logger.info("=" * 60)
+        logger.info("=" * 40)
 
         try:
             # 호가 데이터 수집
@@ -618,9 +618,9 @@ class CrawlerScheduler:
             sector_index_collector = SectorIndexCollector()
             await sector_index_collector.collect_all()
 
-            logger.info("=" * 60)
+            logger.info("=" * 40)
             logger.info("✅ 시장 데이터 수집 완료")
-            logger.info("=" * 60)
+            logger.info("=" * 40)
 
         except Exception as e:
             logger.error(f"❌ 시장 데이터 수집 중 에러: {e}")
@@ -630,18 +630,18 @@ class CrawlerScheduler:
         투자자별 매매동향 데이터 수집.
         매일 장 마감 후(16:00)에 실행됩니다.
         """
-        logger.info("=" * 60)
+        logger.info("=" * 40)
         logger.info("💼 투자자별 매매동향 수집 시작")
-        logger.info("=" * 60)
+        logger.info("=" * 40)
 
         try:
             # 최근 30일 데이터 수집
             collector = InvestorTradingCollector(batch_size=5)
             await collector.collect_all(days=30)
 
-            logger.info("=" * 60)
+            logger.info("=" * 40)
             logger.info("✅ 투자자별 매매동향 수집 완료")
-            logger.info("=" * 60)
+            logger.info("=" * 40)
 
         except Exception as e:
             logger.error(f"❌ 투자자별 매매동향 수집 중 에러: {e}")
@@ -651,9 +651,9 @@ class CrawlerScheduler:
         시간외 거래 가격 수집.
         매일 저녁 18:00에 실행됩니다 (시간외 거래 종료 후).
         """
-        logger.info("=" * 60)
+        logger.info("=" * 40)
         logger.info("🌙 시간외 거래 가격 수집 시작")
-        logger.info("=" * 60)
+        logger.info("=" * 40)
 
         try:
             from backend.crawlers.kis_market_data_collector import OvertimePriceCollector
@@ -661,9 +661,9 @@ class CrawlerScheduler:
             collector = OvertimePriceCollector(batch_size=10)
             await collector.collect_all()
 
-            logger.info("=" * 60)
+            logger.info("=" * 40)
             logger.info("✅ 시간외 거래 가격 수집 완료")
-            logger.info("=" * 60)
+            logger.info("=" * 40)
 
         except Exception as e:
             logger.error(f"❌ 시간외 거래 가격 수집 중 에러: {e}")
@@ -674,9 +674,9 @@ class CrawlerScheduler:
         하루 3번 실행됩니다 (09:15, 13:00, 15:40).
         모든 활성 종목 대상.
         """
-        logger.info("=" * 60)
+        logger.info("=" * 40)
         logger.info("📝 종목별 투자 리포트 생성 시작")
-        logger.info("=" * 60)
+        logger.info("=" * 40)
 
         db = SessionLocal()
 
@@ -716,9 +716,9 @@ class CrawlerScheduler:
                     failed_count += 1
                     logger.error(f"  ❌ {stock.name} ({stock.code}) 리포트 생성 에러: {e}")
 
-            logger.info("=" * 60)
+            logger.info("=" * 40)
             logger.info(f"✅ 리포트 생성 완료: 성공 {success_count}개, 실패 {failed_count}개")
-            logger.info("=" * 60)
+            logger.info("=" * 40)
 
         except Exception as e:
             logger.error(f"❌ 리포트 생성 중 예상치 못한 에러: {e}")
@@ -732,9 +732,9 @@ class CrawlerScheduler:
         매일 16:30에 실행됩니다 (리포트 생성 후).
         Priority 1-2 종목만 대상.
         """
-        logger.info("=" * 60)
+        logger.info("=" * 40)
         logger.info(f"🎯 모델 평가 생성 시작 (#{self.evaluation_total_runs + 1})")
-        logger.info("=" * 60)
+        logger.info("=" * 40)
 
         db = SessionLocal()
 
@@ -853,7 +853,7 @@ class CrawlerScheduler:
                 else 0
             )
 
-            logger.info("=" * 60)
+            logger.info("=" * 40)
             logger.info(f"✅ 모델 평가 생성 완료: 성공 {success_count}건, 실패 {failed_count}건")
             logger.info(
                 f"📊 평가 전체 통계: 실행 {self.evaluation_total_runs}회, "
@@ -862,7 +862,7 @@ class CrawlerScheduler:
                 f"실패 {self.evaluation_total_failed}건, "
                 f"성공률 {success_rate:.1f}%"
             )
-            logger.info("=" * 60)
+            logger.info("=" * 40)
 
         except Exception as e:
             logger.error(f"❌ 모델 평가 생성 중 예상치 못한 에러: {e}")

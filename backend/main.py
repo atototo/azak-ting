@@ -14,6 +14,13 @@ logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
+
+# 불필요한 INFO 로그 제거
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+logging.getLogger("watchfiles").setLevel(logging.WARNING)
+logging.getLogger("apscheduler").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 # FastAPI 앱 생성

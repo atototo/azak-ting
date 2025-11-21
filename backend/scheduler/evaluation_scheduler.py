@@ -61,9 +61,9 @@ class EvaluationScheduler:
 
         D-1일 생성된 Investment Report를 평가합니다.
         """
-        logger.info("=" * 80)
+        logger.info("=" * 40)
         logger.info("🔄 일일 평가 배치 작업 시작")
-        logger.info("=" * 80)
+        logger.info("=" * 40)
 
         db = SessionLocal()
         try:
@@ -96,9 +96,9 @@ class EvaluationScheduler:
                     error_count += 1
                     logger.error(f"❌ 평가 실패: {prediction.id}, {e}", exc_info=True)
 
-            logger.info("=" * 80)
+            logger.info("=" * 40)
             logger.info(f"✅ 일일 평가 완료: 성공 {success_count}건, 실패 {error_count}건")
-            logger.info("=" * 80)
+            logger.info("=" * 40)
 
         except Exception as e:
             logger.error(f"❌ 일일 평가 배치 작업 실패: {e}", exc_info=True)
@@ -157,9 +157,9 @@ class EvaluationScheduler:
 
         D-1일 평가 데이터를 집계합니다.
         """
-        logger.info("=" * 80)
+        logger.info("=" * 40)
         logger.info("🔄 일일 집계 배치 작업 시작")
-        logger.info("=" * 80)
+        logger.info("=" * 40)
 
         db = SessionLocal()
         try:
@@ -173,9 +173,9 @@ class EvaluationScheduler:
             # 집계 실행
             aggregated_count = service.aggregate_daily_performance(yesterday)
 
-            logger.info("=" * 80)
+            logger.info("=" * 40)
             logger.info(f"✅ 일일 집계 완료: {aggregated_count}개 모델")
-            logger.info("=" * 80)
+            logger.info("=" * 40)
 
         except Exception as e:
             logger.error(f"❌ 일일 집계 배치 작업 실패: {e}", exc_info=True)
