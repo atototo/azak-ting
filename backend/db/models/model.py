@@ -1,7 +1,7 @@
 """
 Model configuration for dynamic A/B testing.
 """
-from sqlalchemy import Column, Integer, String, Boolean, DateTime
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum as SQLEnum
 from datetime import datetime
 from backend.db.base import Base
 
@@ -15,6 +15,7 @@ class Model(Base):
         name: 모델 표시 이름 (예: "GPT-4o", "DeepSeek V3.2")
         provider: 모델 제공자 (예: "openai", "openrouter")
         model_identifier: 실제 모델 식별자 (예: "gpt-4o", "deepseek/deepseek-v3.2-exp")
+        model_type: 모델 타입 ("normal" 또는 "reasoning")
         is_active: 활성화 상태
         description: 모델 설명
         created_at: 생성 일시
@@ -26,6 +27,7 @@ class Model(Base):
     name = Column(String(100), nullable=False, unique=True)
     provider = Column(String(50), nullable=False)  # "openai", "openrouter"
     model_identifier = Column(String(200), nullable=False)
+    model_type = Column(SQLEnum("normal", "reasoning", name="model_type_enum"), default="normal", nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     description = Column(String(500), nullable=True)
     created_at = Column(DateTime, default=datetime.now, nullable=False)

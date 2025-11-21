@@ -116,6 +116,10 @@
 - [종합 분석 - Frontend](./analysis/comprehensive-analysis-frontend.md)
 - [주식 분석 리포트 업데이트 시스템](./analysis/stock-analysis-report-update-system.md)
 
+### 🔄 업데이트 이력
+- [업데이트 목록](./updates/README.md)
+- [Reasoning Model Support (2025-11-21)](./updates/2025-11-21-reasoning-model-support.md) - OpenAI reasoning 모델 지원 추가
+
 ### 📚 레거시 문서 (참고용)
 - [레거시 문서 목록](./legacy/README.md)
 
@@ -291,6 +295,6 @@ azak/
 
 ---
 
-**📝 문서 버전:** 1.2.0
-**마지막 업데이트:** 2025-11-20 (Backend/Frontend 아키텍처 문서 주제별 분리)
+**📝 문서 버전:** 1.3.0
+**마지막 업데이트:** 2025-11-21 (Reasoning 모델 지원 추가, 업데이트 이력 추가)
 **생성 도구:** BMad document-project workflow (Deep Scan)

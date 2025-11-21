@@ -4,7 +4,7 @@
 LLM 모델 CRUD 및 관리 기능을 제공합니다.
 """
 import logging
-from typing import List, Optional
+from typing import List, Optional, Literal
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
@@ -26,6 +26,7 @@ class ModelCreate(BaseModel):
     name: str = Field(..., description="모델 표시 이름 (예: GPT-4o)")
     provider: str = Field(..., description="모델 제공자 (openai, openrouter)")
     model_identifier: str = Field(..., description="실제 모델 식별자 (예: gpt-4o, deepseek/deepseek-v3.2-exp)")
+    model_type: Literal["normal", "reasoning"] = Field(default="normal", description="모델 타입 (normal: 일반, reasoning: 추론형)")
     description: Optional[str] = Field(None, description="모델 설명")
 
 
@@ -34,6 +35,7 @@ class ModelUpdate(BaseModel):
     name: Optional[str] = None
     provider: Optional[str] = None
     model_identifier: Optional[str] = None
+    model_type: Optional[Literal["normal", "reasoning"]] = None
     description: Optional[str] = None
     is_active: Optional[bool] = None
 
@@ -44,6 +46,7 @@ class ModelResponse(BaseModel):
     name: str
     provider: str
     model_identifier: str
+    model_type: str
     is_active: bool
     description: Optional[str]
     created_at: datetime
@@ -135,6 +138,7 @@ async def create_model(model: ModelCreate):
             name=model.name,
             provider=model.provider,
             model_identifier=model.model_identifier,
+            model_type=model.model_type,
             description=model.description,
             is_active=True,  # 기본값: 활성화
         )
@@ -144,6 +148,15 @@ async def create_model(model: ModelCreate):
         db.refresh(new_model)
 
         logger.info(f"✅ 모델 추가 완료: {new_model.name} (ID: {new_model.id})")
+
+        # Predictor 모델 목록 재로드 (새 모델이 인식되도록)
+        try:
+            from backend.llm.predictor import get_predictor
+            predictor = get_predictor()
+            predictor.reload_models()
+            logger.info(f"🔄 Predictor 모델 목록 재로드 완료")
+        except Exception as e:
+            logger.warning(f"Predictor 재로드 실패: {e}")
 
         # 백그라운드에서 최근 뉴스에 대해 예측 생성
         try:

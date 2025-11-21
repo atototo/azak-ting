@@ -71,22 +71,28 @@ class StockPredictor:
                     if model_a and model_b:
                         self.client_a = self._create_client(model_a.provider)
                         self.model_a = model_a.model_identifier
+                        self.model_a_type = model_a.model_type
                         self.client_b = self._create_client(model_b.provider)
                         self.model_b = model_b.model_identifier
-                        logger.info(f"A/B 테스트 활성화 (레거시): Model A={model_a.name} ({self.model_a}), Model B={model_b.name} ({self.model_b})")
+                        self.model_b_type = model_b.model_type
+                        logger.info(f"A/B 테스트 활성화 (레거시): Model A={model_a.name} ({self.model_a}, type={self.model_a_type}), Model B={model_b.name} ({self.model_b}, type={self.model_b_type})")
                     else:
                         # Fallback to config
                         self.client_a = self._create_client(settings.MODEL_A_PROVIDER)
                         self.model_a = settings.MODEL_A_NAME
+                        self.model_a_type = "normal"  # Default
                         self.client_b = self._create_client(settings.MODEL_B_PROVIDER)
                         self.model_b = settings.MODEL_B_NAME
+                        self.model_b_type = "normal"  # Default
                         logger.warning(f"⚠️ DB 모델 정보 없음, config 사용: Model A={self.model_a}, Model B={self.model_b}")
                 else:
                     # Fallback to config
                     self.client_a = self._create_client(settings.MODEL_A_PROVIDER)
                     self.model_a = settings.MODEL_A_NAME
+                    self.model_a_type = "normal"  # Default
                     self.client_b = self._create_client(settings.MODEL_B_PROVIDER)
                     self.model_b = settings.MODEL_B_NAME
+                    self.model_b_type = "normal"  # Default
                     logger.warning(f"⚠️ 활성 A/B 테스트 설정 없음, config 사용: Model A={self.model_a}, Model B={self.model_b}")
             finally:
                 db.close()
@@ -123,10 +129,11 @@ class StockPredictor:
                     "name": model.name,
                     "provider": model.provider,
                     "model_identifier": model.model_identifier,
+                    "model_type": model.model_type,
                     "client": client,
                     "description": model.description,
                 }
-                logger.info(f"  📊 Model loaded: {model.name} ({model.provider}/{model.model_identifier})")
+                logger.info(f"  📊 Model loaded: {model.name} ({model.provider}/{model.model_identifier}, type={model.model_type})")
 
             return result
 
@@ -135,6 +142,15 @@ class StockPredictor:
             return {}
         finally:
             db.close()
+
+    def reload_models(self) -> None:
+        """
+        DB에서 활성 모델 목록을 다시 로드합니다.
+        새로운 모델이 추가되거나 모델 상태가 변경된 경우 호출합니다.
+        """
+        logger.info("🔄 활성 모델 재로드 중...")
+        self.active_models = self._load_active_models()
+        logger.info(f"✅ 활성 모델 {len(self.active_models)}개 재로드 완료")
 
     def _save_model_prediction(
         self,
@@ -1255,6 +1271,7 @@ class StockPredictor:
         provider: str,
         prompt: str,
         similar_count: int,
+        model_type: str = "normal",
     ) -> Dict[str, Any]:
         """
         특정 모델로 예측 수행 (내부 헬퍼 메서드)
@@ -1265,49 +1282,90 @@ class StockPredictor:
             provider: 프로바이더 (openai/openrouter)
             prompt: 예측 프롬프트
             similar_count: 유사 뉴스 개수
+            model_type: 모델 타입 (normal/reasoning)
 
         Returns:
             예측 결과
         """
         try:
-            # LLM 호출
+            # LLM 호출 - reasoning 모델과 일반 모델 구분
+            is_reasoning_model = model_type == "reasoning"
+
+            # reasoning 모델용 시스템 프롬프트 (JSON을 reasoning 끝에 출력하도록)
+            if is_reasoning_model:
+                system_content = "당신은 한국 주식 시장 분석 전문가입니다. 뉴스 분석을 통해 주가 예측을 수행합니다. 사고 과정을 거친 후, 반드시 마지막에 JSON 형식의 결과만 출력하세요."
+            else:
+                system_content = "당신은 한국 주식 시장 분석 전문가입니다. 뉴스 분석을 통해 주가 예측을 수행합니다. 반드시 JSON 형식으로만 응답하세요."
+
             if provider == "openrouter":
                 response = client.chat.completions.create(
                     model=model_name,
                     messages=[
-                        {
-                            "role": "system",
-                            "content": "당신은 한국 주식 시장 분석 전문가입니다. 뉴스 분석을 통해 주가 예측을 수행합니다. 반드시 JSON 형식으로만 응답하세요.",
-                        },
+                        {"role": "system", "content": system_content},
                         {"role": "user", "content": prompt},
                     ],
                     temperature=0.3,
-                    max_tokens=1000,
+                    max_tokens=4000 if is_reasoning_model else 1000,  # reasoning 모델은 더 많은 토큰 필요
                 )
             else:  # openai
-                response = client.chat.completions.create(
-                    model=model_name,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "당신은 한국 주식 시장 분석 전문가입니다. 뉴스 분석을 통해 주가 예측을 수행합니다.",
-                        },
+                # reasoning 모델은 response_format 지원 안함
+                api_params = {
+                    "model": model_name,
+                    "messages": [
+                        {"role": "system", "content": system_content},
                         {"role": "user", "content": prompt},
                     ],
-                    temperature=0.3,
-                    max_tokens=1000,
-                    response_format={"type": "json_object"},
-                )
+                    "temperature": 0.3,
+                    "max_tokens": 4000 if is_reasoning_model else 1000,
+                }
 
-            # 응답 파싱
-            result_text = response.choices[0].message.content
+                # 일반 모델만 response_format 사용
+                if not is_reasoning_model:
+                    api_params["response_format"] = {"type": "json_object"}
 
-            # OpenRouter 응답에서 JSON 추출
-            if provider == "openrouter" and "```json" in result_text:
-                import re
+                response = client.chat.completions.create(**api_params)
+
+            # 디버깅: 전체 API 응답 구조 로깅
+            logger.info(f"🔍 API 응답 구조 ({model_name}): choices={len(response.choices)}, model={response.model}")
+            logger.info(f"🔍 Message 객체 ({model_name}): {response.choices[0].message}")
+
+            # 응답 파싱 - content 또는 reasoning에서 가져오기
+            message = response.choices[0].message
+            result_text = message.content
+
+            # content가 비어있으면 reasoning 필드 확인 (o1, o3, gpt-5-mini 등)
+            if not result_text and hasattr(message, 'reasoning') and message.reasoning:
+                result_text = message.reasoning
+                logger.info(f"💡 content 비어있음, reasoning 필드 사용 (model_type={model_type})")
+
+            # 디버깅: 실제 응답 로깅 (길이 포함)
+            logger.info(f"🔍 LLM 응답 길이 ({model_name}): {len(result_text) if result_text else 0} chars")
+            logger.info(f"🔍 LLM 응답 내용 ({model_name}): {repr(result_text[:500] if result_text else '')}")
+
+            # JSON 추출 (reasoning 모델과 일반 모델 모두 처리)
+            import re
+
+            # 1. ```json ... ``` 블록 추출 시도
+            if "```json" in result_text:
                 json_match = re.search(r'```json\s*(\{.*?\})\s*```', result_text, re.DOTALL)
                 if json_match:
                     result_text = json_match.group(1)
+                    logger.info(f"✅ JSON 블록 (```json) 추출 성공")
+
+            # 2. reasoning 모델의 경우 마지막 {...} JSON 객체 추출 시도
+            elif is_reasoning_model and '{' in result_text:
+                # 마지막 { 부터 마지막 } 까지 추출
+                last_open = result_text.rfind('{')
+                last_close = result_text.rfind('}')
+                if last_open != -1 and last_close != -1 and last_close > last_open:
+                    json_candidate = result_text[last_open:last_close+1]
+                    try:
+                        # JSON 유효성 검증
+                        json.loads(json_candidate)
+                        result_text = json_candidate
+                        logger.info(f"✅ Reasoning 모델: 마지막 JSON 객체 추출 성공")
+                    except json.JSONDecodeError:
+                        logger.warning(f"⚠️ Reasoning 모델: 마지막 JSON 객체 파싱 실패, 전체 텍스트로 시도")
 
             result = json.loads(result_text)
 
@@ -1391,7 +1449,8 @@ class StockPredictor:
             self.model_a,
             settings.MODEL_A_PROVIDER,
             prompt,
-            similar_count
+            similar_count,
+            self.model_a_type
         )
 
         # Model B 예측
@@ -1401,7 +1460,8 @@ class StockPredictor:
             self.model_b,
             settings.MODEL_B_PROVIDER,
             prompt,
-            similar_count
+            similar_count,
+            self.model_b_type
         )
 
         # 비교 분석
@@ -1462,7 +1522,8 @@ class StockPredictor:
                 model_info["model_identifier"],
                 model_info["provider"],
                 prompt,
-                similar_count
+                similar_count,
+                model_info["model_type"]
             )
 
             # 결과에 model_id 추가
