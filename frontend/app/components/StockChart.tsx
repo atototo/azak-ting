@@ -13,6 +13,10 @@ import {
   ResponsiveContainer,
   ReferenceDot,
   ReferenceLine,
+  ReferenceArea,
+  Scatter,
+  Label,
+  Customized,
 } from "recharts";
 
 interface PriceData {
@@ -74,13 +78,121 @@ const MODEL_COLORS = [
   "#ec4899", // 핑크색
 ];
 
+// Helper to get model color
+const getModelColor = (modelId: number) => {
+  return MODEL_COLORS[(modelId - 1) % MODEL_COLORS.length];
+};
+
+// Custom component to render labels with collision detection
+const PredictionLabels = (props: any) => {
+  const { models, extendedData, yAxis, xAxis } = props;
+
+  if (!yAxis || !xAxis || !models || !extendedData) return null;
+
+  // 1. Collect all label positions
+  const labels: any[] = [];
+
+  models.forEach((model: any) => {
+    let lastPoint = null;
+    let predictionValue = null;
+
+    for (let i = extendedData.length - 1; i >= 0; i--) {
+      if (extendedData[i][`prediction_${model.id}`] !== undefined && extendedData[i][`prediction_${model.id}`] !== null) {
+        lastPoint = extendedData[i];
+        predictionValue = extendedData[i][`prediction_${model.id}`];
+        break;
+      }
+    }
+
+    if (lastPoint && predictionValue) {
+      const x = xAxis.scale(lastPoint.date);
+      const y = yAxis.scale(predictionValue);
+      labels.push({
+        model,
+        x,
+        y, // Original Y (for the dot)
+        labelY: y, // Adjusted Y (for the label)
+        height: 24 // Height of label + padding
+      });
+    }
+  });
+
+  // 2. Sort by Y position (ascending - top to bottom)
+  labels.sort((a, b) => a.y - b.y);
+
+  // 3. Resolve collisions
+  // Simple greedy approach: iterate and push down if overlapping
+  for (let i = 1; i < labels.length; i++) {
+    const prev = labels[i - 1];
+    const curr = labels[i];
+
+    if (curr.labelY < prev.labelY + prev.height) {
+      curr.labelY = prev.labelY + prev.height;
+    }
+  }
+
+  return (
+    <g>
+      {labels.map((item) => {
+        const { model, x, y, labelY } = item;
+        const width = model.name.length * 8 + 16;
+        const height = 20;
+
+        return (
+          <g key={`label-${model.id}`}>
+            {/* Dot at the original position */}
+            <circle cx={x} cy={y} r={4} fill={getModelColor(model.id)} />
+
+            {/* Connecting line if label moved significantly */}
+            {Math.abs(labelY - y) > 10 && (
+              <line
+                x1={x} y1={y}
+                x2={x + 8} y2={labelY}
+                stroke={getModelColor(model.id)}
+                strokeWidth={1}
+                opacity={0.5}
+              />
+            )}
+
+            {/* Label at adjusted position */}
+            <rect
+              x={x + 8}
+              y={labelY - height / 2}
+              width={width}
+              height={height}
+              fill={getModelColor(model.id)}
+              rx={4}
+              ry={4}
+            />
+            <text
+              x={x + 8 + width / 2}
+              y={labelY}
+              dy={4}
+              fill="#fff"
+              fontSize={11}
+              fontWeight="bold"
+              textAnchor="middle"
+            >
+              {model.name}
+            </text>
+          </g>
+        );
+      })}
+    </g>
+  );
+};
+
 export default function StockChart({ stockCode }: StockChartProps) {
   const [data, setData] = useState<PriceData[]>([]);
+  const [extendedData, setExtendedData] = useState<any[]>([]); // Future data included
+  const [futureStartIndex, setFutureStartIndex] = useState<number>(-1);
+
   const [reports, setReports] = useState<AnalysisReport[]>([]);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [period, setPeriod] = useState<PeriodType>("1M");
+  const [period, setPeriod] = useState<PeriodType>("3M");
+  const [showMarkers, setShowMarkers] = useState(true);
   const [selectedReport, setSelectedReport] = useState<AnalysisReport | null>(null);
 
   useEffect(() => {
@@ -103,14 +215,137 @@ export default function StockChart({ stockCode }: StockChartProps) {
         const startDate = prices.length > 0 ? prices[0].date.split('T')[0] : null;
         const endDate = prices.length > 0 ? prices[prices.length - 1].date.split('T')[0] : null;
 
+        let fetchedReports: AnalysisReport[] = [];
+
         if (startDate && endDate) {
           const reportsResponse = await fetch(
             `/api/stocks/${stockCode}/analysis-reports?start_date=${startDate}&end_date=${endDate}`
           );
           if (reportsResponse.ok) {
             const reportsData = await reportsResponse.json();
-            setReports(reportsData.reports || []);
-            setModels(reportsData.models || []);
+            const activeModels = reportsData.models || [];
+            const activeModelIds = new Set(activeModels.map((m: ModelInfo) => m.id));
+
+            // Filter reports: Only include reports from active models
+            fetchedReports = (reportsData.reports || []).filter((r: AnalysisReport) =>
+              r.model_id && activeModelIds.has(r.model_id)
+            );
+
+            // Define lastDate and lastClose for calculations
+            const lastDate = new Date(prices[prices.length - 1].date);
+            const lastClose = prices[prices.length - 1].close;
+
+            // 1. Filter reports: Show latest report per model per date
+            // Group by date, then for each date keep only the latest report per model
+            const reportsByDate = new Map<string, Map<number, AnalysisReport>>();
+
+            fetchedReports.forEach(report => {
+              if (!report.generated_at || !report.model_id) return;
+
+              const reportDate = new Date(report.generated_at).toISOString().split('T')[0];
+
+              if (!reportsByDate.has(reportDate)) {
+                reportsByDate.set(reportDate, new Map());
+              }
+
+              const dateMap = reportsByDate.get(reportDate)!;
+              const existing = dateMap.get(report.model_id);
+
+              // Keep the latest report for this model on this date
+              if (!existing || new Date(report.generated_at) > new Date(existing.generated_at!)) {
+                dateMap.set(report.model_id, report);
+              }
+            });
+
+            // Flatten back to array
+            const filteredReports: AnalysisReport[] = [];
+            reportsByDate.forEach(dateMap => {
+              dateMap.forEach(report => filteredReports.push(report));
+            });
+
+            setReports(filteredReports);
+            setModels(reportsData.models || []); // Keep all models for legend
+
+            // 2. Calculate Consensus Targets from the MOST RECENT reports (latest date)
+            // Find the latest date among all reports
+            const latestReports: AnalysisReport[] = [];
+            if (filteredReports.length > 0) {
+              const dates = filteredReports
+                .map(r => r.generated_at ? new Date(r.generated_at).getTime() : 0)
+                .filter(t => t > 0);
+
+              if (dates.length > 0) {
+                const maxDate = new Date(Math.max(...dates));
+                const maxDateStr = maxDate.toISOString().split('T')[0];
+
+
+                latestReports.push(...filteredReports.filter(r =>
+                  r.generated_at && r.generated_at.startsWith(maxDateStr)
+                ));
+
+
+              }
+            }
+
+            // 2. Calculate Per-Model Prediction Paths
+            // We no longer calculate a single consensus. Instead, we prepare data for each model.
+            // latestReports already contains the latest report for each model from the most recent date.
+
+            // 3. Extend Data for Future Area
+            const futureDays = 35; // Extend by ~35 days to cover medium term (30d)
+
+            // Initialize with historical data
+            const newExtendedData: any[] = prices.map(p => ({
+              ...p,
+            }));
+
+            // Add the last historical point as the starting point for all models
+            if (prices.length > 0) {
+              const lastPoint = newExtendedData[prices.length - 1];
+              latestReports.forEach(report => {
+                if (report.model_id) {
+                  lastPoint[`prediction_${report.model_id}`] = lastClose;
+                }
+              });
+            }
+
+            for (let i = 1; i <= futureDays; i++) {
+              const futureDate = new Date(lastDate);
+              futureDate.setDate(futureDate.getDate() + i);
+              const dateStr = futureDate.toISOString().split('T')[0];
+
+              const point: any = {
+                date: dateStr,
+                open: null, high: null, low: null, close: null, volume: null,
+              };
+
+              // Calculate prediction for each model
+              latestReports.forEach(report => {
+                if (!report.model_id) return;
+
+                const modelId = report.model_id;
+                const shortTarget = report.short_term_target_price;
+                const mediumTarget = report.medium_term_target_price;
+
+                // Short Term: Day 0 -> Day 7
+                if (i <= 7 && shortTarget) {
+                  const slope = (shortTarget - lastClose) / 7;
+                  point[`prediction_${modelId}`] = lastClose + (slope * i);
+                }
+
+                // Medium Term: Day 7 -> Day 30
+                if (i > 7 && i <= 30 && shortTarget && mediumTarget) {
+                  const slope = (mediumTarget - shortTarget) / (30 - 7);
+                  point[`prediction_${modelId}`] = shortTarget + (slope * (i - 7));
+                }
+              });
+
+              newExtendedData.push(point);
+            }
+
+
+            setExtendedData(newExtendedData);
+            setFutureStartIndex(prices.length); // Index where future starts
           }
         }
       } catch (err) {
@@ -123,6 +358,17 @@ export default function StockChart({ stockCode }: StockChartProps) {
 
     fetchData();
   }, [stockCode, period]);
+
+  // X축 틱 계산 (너무 빽빽하지 않게)
+  const getXAxisTicks = () => {
+    if (extendedData.length === 0) return [];
+    const ticks = [];
+    const step = Math.ceil(extendedData.length / 6); // Show ~6 ticks
+    for (let i = 0; i < extendedData.length; i += step) {
+      ticks.push(extendedData[i].date);
+    }
+    return ticks;
+  };
 
   // 가격 포맷팅
   const formatPrice = (value: number) => {
@@ -203,30 +449,58 @@ export default function StockChart({ stockCode }: StockChartProps) {
       const data = payload[0].payload;
       const date = new Date(data.date);
 
-      return (
-        <div className="bg-white p-4 border border-gray-300 rounded-lg shadow-lg max-w-xs">
-          <p className="font-semibold text-gray-900 mb-2">
-            {date.toLocaleDateString("ko-KR")}
-          </p>
-          <div className="space-y-1 text-sm">
-            <p className="text-gray-700">
-              <span className="font-medium">시가:</span> {data.open.toLocaleString()}원
+      // Historical data exists
+      if (data.open !== null) {
+        return (
+          <div className="bg-white p-4 border border-gray-300 rounded-lg shadow-lg max-w-xs" style={{ pointerEvents: 'none' }}>
+            <p className="font-semibold text-gray-900 mb-2">
+              {date.toLocaleDateString("ko-KR")}
             </p>
-            <p className="text-gray-700">
-              <span className="font-medium">고가:</span> {data.high.toLocaleString()}원
-            </p>
-            <p className="text-gray-700">
-              <span className="font-medium">저가:</span> {data.low.toLocaleString()}원
-            </p>
-            <p className="text-gray-700 font-semibold">
-              <span className="font-medium">종가:</span> {data.close.toLocaleString()}원
-            </p>
-            <p className="text-gray-700 pt-2 border-t border-gray-200">
-              <span className="font-medium">거래량:</span> {data.volume.toLocaleString()}
-            </p>
+            <div className="space-y-1 text-sm">
+              <p className="text-gray-700">
+                <span className="font-medium">시가:</span> {data.open.toLocaleString()}원
+              </p>
+              <p className="text-gray-700">
+                <span className="font-medium">고가:</span> {data.high.toLocaleString()}원
+              </p>
+              <p className="text-gray-700">
+                <span className="font-medium">저가:</span> {data.low.toLocaleString()}원
+              </p>
+              <p className="text-gray-700 font-semibold">
+                <span className="font-medium">종가:</span> {data.close.toLocaleString()}원
+              </p>
+              <p className="text-gray-700 pt-2 border-t border-gray-200">
+                <span className="font-medium">거래량:</span> {data.volume.toLocaleString()}
+              </p>
+            </div>
           </div>
-        </div>
-      );
+        );
+      }
+
+      // Future data (Consensus targets)
+      // Future data (Model predictions)
+      const hasPrediction = models.some(m => data[`prediction_${m.id}`] !== undefined);
+
+      if (hasPrediction) {
+        return (
+          <div className="bg-white p-4 border border-gray-300 rounded-lg shadow-lg max-w-xs" style={{ pointerEvents: 'none' }}>
+            <p className="font-semibold text-gray-900 mb-2">
+              {date.toLocaleDateString("ko-KR")} (예측)
+            </p>
+            <div className="space-y-1 text-sm">
+              {models.map(model => {
+                const pred = data[`prediction_${model.id}`];
+                if (pred === undefined || pred === null) return null;
+                return (
+                  <p key={model.id} className="font-medium" style={{ color: getModelColor(model.id) }}>
+                    {model.name}: {Math.round(pred).toLocaleString()}원
+                  </p>
+                );
+              })}
+            </div>
+          </div>
+        );
+      }
     }
     return null;
   };
@@ -269,7 +543,17 @@ export default function StockChart({ stockCode }: StockChartProps) {
         </h2>
 
         {/* 기간 선택 버튼 */}
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          <button
+            onClick={() => setShowMarkers(!showMarkers)}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors border ${showMarkers
+              ? "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100"
+              : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+              }`}
+          >
+            {showMarkers ? "마커 숨기기" : "마커 보이기"}
+          </button>
+          <div className="h-4 w-px bg-gray-300 mx-1" />
           {(Object.keys(PERIOD_DAYS) as PeriodType[]).map((p) => (
             <button
               key={p}
@@ -309,8 +593,9 @@ export default function StockChart({ stockCode }: StockChartProps) {
       <div style={{ width: "100%", height: 450 }}>
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
-            data={data}
-            margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
+            key={extendedData.length}
+            data={extendedData.length > 0 ? extendedData : data}
+            margin={{ top: 20, right: 100, left: 0, bottom: 0 }}
           >
             <defs>
               <linearGradient id="colorVolume" x1="0" y1="0" x2="0" y2="1">
@@ -319,6 +604,41 @@ export default function StockChart({ stockCode }: StockChartProps) {
               </linearGradient>
             </defs>
 
+            {/* 미래 영역 배경 (가장 뒤에 그려짐) */}
+            {futureStartIndex > -1 && extendedData.length > futureStartIndex + 7 && (
+              <ReferenceArea
+                yAxisId="price"
+                x1={extendedData[futureStartIndex].date}
+                x2={extendedData[futureStartIndex + 7].date}
+                fill="#8b5cf6"
+                fillOpacity={0.1}
+                label={{
+                  value: "단기 예측",
+                  position: "insideTop",
+                  fill: "#8b5cf6",
+                  fontSize: 12,
+                  fontWeight: "bold"
+                }}
+              />
+            )}
+
+            {futureStartIndex > -1 && extendedData.length > futureStartIndex + 7 && (
+              <ReferenceArea
+                yAxisId="price"
+                x1={extendedData[futureStartIndex + 7].date}
+                x2={extendedData[extendedData.length - 1].date}
+                fill="#f59e0b"
+                fillOpacity={0.1}
+                label={{
+                  value: "중기 예측",
+                  position: "insideTop",
+                  fill: "#f59e0b",
+                  fontSize: 12,
+                  fontWeight: "bold"
+                }}
+              />
+            )}
+
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
 
             <XAxis
@@ -326,6 +646,7 @@ export default function StockChart({ stockCode }: StockChartProps) {
               tickFormatter={formatDate}
               stroke="#6b7280"
               style={{ fontSize: "12px" }}
+              ticks={getXAxisTicks()}
             />
 
             {/* 주가 Y축 (왼쪽) */}
@@ -334,7 +655,8 @@ export default function StockChart({ stockCode }: StockChartProps) {
               tickFormatter={formatPrice}
               stroke="#6b7280"
               style={{ fontSize: "12px" }}
-              domain={["auto", "auto"]}
+              width={80}
+              domain={['auto', (dataMax: number) => Math.round(dataMax * 1.15)]}
             />
 
             {/* 거래량 Y축 (오른쪽) */}
@@ -344,9 +666,13 @@ export default function StockChart({ stockCode }: StockChartProps) {
               tickFormatter={formatVolume}
               stroke="#6b7280"
               style={{ fontSize: "12px" }}
+              label={{ value: '거래량', angle: 90, position: 'insideRight', offset: 10, style: { fill: '#6b7280', fontSize: '12px' } }}
             />
 
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip
+              content={<CustomTooltip />}
+              wrapperStyle={{ pointerEvents: 'none' }}
+            />
 
             <Legend
               wrapperStyle={{ paddingTop: "20px" }}
@@ -372,6 +698,7 @@ export default function StockChart({ stockCode }: StockChartProps) {
               dot={false}
               name="고가"
               opacity={0.5}
+              connectNulls
             />
 
             {/* 저가 라인 */}
@@ -384,6 +711,7 @@ export default function StockChart({ stockCode }: StockChartProps) {
               dot={false}
               name="저가"
               opacity={0.5}
+              connectNulls
             />
 
             {/* 종가 라인 (메인) */}
@@ -395,45 +723,107 @@ export default function StockChart({ stockCode }: StockChartProps) {
               strokeWidth={2}
               dot={false}
               name="종가"
+              connectNulls
             />
 
-            {/* 선택된 리포트의 목표가 수평선 */}
-            {selectedReport && selectedReport.short_term_target_price && (
-              <ReferenceLine
-                yAxisId="price"
-                y={selectedReport.short_term_target_price}
-                stroke={getModelColor(selectedReport.model_id)}
-                strokeDasharray="5 5"
-                strokeWidth={2}
-                label={{
-                  value: `단기 목표: ${selectedReport.short_term_target_price.toLocaleString()}원`,
-                  position: 'insideTopRight',
-                  fill: getModelColor(selectedReport.model_id),
-                  fontSize: 11,
-                  fontWeight: 'bold',
-                }}
-              />
-            )}
+            {/* Per-Model Prediction Lines */}
+            {models.map((model, index) => {
+              // Different dash patterns for each model
+              const dashPatterns = ["5 5", "10 5", "5 10", "3 3"];
 
-            {selectedReport && selectedReport.medium_term_target_price && (
-              <ReferenceLine
-                yAxisId="price"
-                y={selectedReport.medium_term_target_price}
-                stroke={getModelColor(selectedReport.model_id)}
-                strokeDasharray="3 3"
-                strokeWidth={1.5}
-                opacity={0.7}
-                label={{
-                  value: `중기 목표: ${selectedReport.medium_term_target_price.toLocaleString()}원`,
-                  position: 'insideBottomRight',
-                  fill: getModelColor(selectedReport.model_id),
-                  fontSize: 10,
-                }}
-              />
-            )}
+              return (
+                <Line
+                  key={model.id}
+                  yAxisId="price"
+                  type="linear"
+                  dataKey={`prediction_${model.id}`}
+                  stroke={getModelColor(model.id)}
+                  strokeWidth={3 - (index * 0.5)} // Vary width: 3, 2.5, 2, 1.5
+                  strokeDasharray={dashPatterns[index % dashPatterns.length]}
+                  dot={false}
+                  name={`${model.name} 예측`}
+                  connectNulls
+                />
+              );
+            })} {/* Model Labels at the end of prediction lines */}
+            {models.map((model) => {
+              // Find the last point that actually has a prediction value for this model
+              let lastPoint = null;
+              let predictionValue = null;
 
-            {/* AI 리포트 마커 (모델별) */}
-            {reports.map((report, idx) => {
+              for (let i = extendedData.length - 1; i >= 0; i--) {
+                if (extendedData[i][`prediction_${model.id}`] !== undefined && extendedData[i][`prediction_${model.id}`] !== null) {
+                  lastPoint = extendedData[i];
+                  predictionValue = extendedData[i][`prediction_${model.id}`];
+                  break;
+                }
+              }
+
+              if (!lastPoint || !predictionValue) {
+                return null;
+              }
+
+              return (
+                <ReferenceDot
+                  key={`label-${model.id}-${lastPoint.date}`}
+                  yAxisId="price"
+                  x={lastPoint.date}
+                  y={predictionValue}
+                  isFront={true}
+                  shape={(props: any) => {
+                    const { cx, cy } = props;
+                    if (!cx || !cy) return <g />;
+
+                    const width = model.name.length * 8 + 16;
+                    const height = 20;
+
+                    return (
+                      <g className="prediction-label" style={{ cursor: 'pointer' }}>
+                        {/* Dot at prediction endpoint */}
+                        <circle
+                          cx={cx}
+                          cy={cy}
+                          r={4}
+                          fill={getModelColor(model.id)}
+                          stroke="#fff"
+                          strokeWidth={1}
+                        />
+
+                        {/* Label background with slight transparency */}
+                        <rect
+                          x={cx + 8}
+                          y={cy - height / 2}
+                          width={width}
+                          height={height}
+                          fill={getModelColor(model.id)}
+                          fillOpacity={0.95}
+                          stroke="#fff"
+                          strokeWidth={1}
+                          rx={4}
+                          ry={4}
+                        />
+
+                        {/* Label text */}
+                        <text
+                          x={cx + 8 + width / 2}
+                          y={cy}
+                          dy={4}
+                          fill="#fff"
+                          fontSize={11}
+                          fontWeight="bold"
+                          textAnchor="middle"
+                        >
+                          {model.name}
+                        </text>
+                      </g>
+                    );
+                  }}
+                />
+              );
+            })}
+
+            {/* AI 리포트 마커 (ReferenceDot으로 복귀 및 개선) */}
+            {showMarkers && reports.map((report, idx) => {
               if (!report.generated_at) {
                 return null;
               }
@@ -450,8 +840,8 @@ export default function StockChart({ stockCode }: StockChartProps) {
                 r.generated_at && new Date(r.generated_at).toISOString().split('T')[0] === reportDate
               );
               const sameDateIndex = sameDateReports.findIndex(r => r.id === report.id);
-              // 간격을 더 넓게 (0.02 → 0.03)
-              const yPosition = priceData.high * (1.04 + (sameDateIndex * 0.03));
+              // 간격을 좁힘 (0.03 -> 0.02) 및 시작점 조정 (1.04 -> 1.02)
+              const yPosition = priceData.high * (1.02 + (sameDateIndex * 0.02));
 
               return (
                 <ReferenceDot
@@ -459,24 +849,17 @@ export default function StockChart({ stockCode }: StockChartProps) {
                   yAxisId="price"
                   x={priceData.date}
                   y={yPosition}
-                  r={6}  // 작은 점 (클릭 영역)
+                  r={4}
                   fill={getModelColor(report.model_id)}
-                  fillOpacity={0.3}  // 반투명
+                  fillOpacity={0.8}
                   stroke={getModelColor(report.model_id)}
-                  strokeWidth={2}
-                  onClick={() => setSelectedReport(report)}
-                  style={{ cursor: 'pointer' }}
-                  label={{
-                    value: getRecommendationLabel(report),
-                    position: 'right',
-                    fontSize: 13,
-                    fontWeight: 'bold',
-                    fill: getModelColor(report.model_id),
-                    stroke: '#fff',
-                    strokeWidth: 4,
-                    paintOrder: 'stroke',
-                    style: { cursor: 'pointer' },
+                  strokeWidth={1}
+                  isFront={true}
+                  onClick={(e) => {
+
+                    setSelectedReport(report);
                   }}
+                  style={{ cursor: 'pointer' }}
                 />
               );
             })}
@@ -485,7 +868,7 @@ export default function StockChart({ stockCode }: StockChartProps) {
       </div>
 
       {/* 선택된 리포트 상세 정보 */}
-      {selectedReport && (
+      {showMarkers && selectedReport && (
         <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <div className="flex justify-between items-start mb-3">
             <div>
