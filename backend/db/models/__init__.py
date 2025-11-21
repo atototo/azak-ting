@@ -16,6 +16,7 @@ from backend.db.models.market_data import (
     StockOvertimePrice,
 )
 from backend.db.models.financial import ProductInfo, FinancialRatio
+from backend.db.models.public_preview_link import PublicPreviewLink
 
 __all__ = [
     "Base",
@@ -35,4 +36,5 @@ __all__ = [
     "StockOvertimePrice",
     "ProductInfo",
     "FinancialRatio",
+    "PublicPreviewLink",
 ]

@@ -132,6 +132,30 @@ export default function AdminStocksPage() {
     }
   };
 
+  // 홍보 링크 생성
+  const handleCreatePreviewLink = async (stock: Stock) => {
+    try {
+      const res = await fetch("/api/admin/preview-links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stock_code: stock.code }),
+      });
+
+      if (!res.ok) {
+        throw new Error("링크 생성 실패");
+      }
+
+      const data = await res.json();
+      const fullUrl = `${window.location.origin}/public/${data.link_id}`;
+
+      // 클립보드에 복사
+      await navigator.clipboard.writeText(fullUrl);
+      alert(`홍보 링크가 생성되었습니다!\n\n${fullUrl}\n\n클립보드에 복사되었습니다.`);
+    } catch (err: any) {
+      alert(`링크 생성 실패: ${err.message}`);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -309,7 +333,13 @@ export default function AdminStocksPage() {
                             {stock.is_active ? "활성화" : "비활성화"}
                           </button>
                         </td>
-                        <td className="px-4 py-3 text-sm text-right">
+                        <td className="px-4 py-3 text-sm text-right space-x-3">
+                          <button
+                            onClick={() => handleCreatePreviewLink(stock)}
+                            className="text-blue-600 hover:text-blue-800 font-medium"
+                          >
+                            🔗 홍보 링크
+                          </button>
                           <button
                             onClick={() => handleDeleteStock(stock)}
                             className="text-red-600 hover:text-red-800"

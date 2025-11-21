@@ -29,6 +29,19 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // 공개 프리뷰 URL 처리 (홍보용 공개 링크)
+  if (pathname.startsWith("/public/")) {
+    // 인증 없이 통과
+    return NextResponse.next();
+  }
+
+  // 공개 프리뷰 모드 체크 (isPublicPreview 쿼리 파라미터)
+  const isPublicPreview = searchParams.get("isPublicPreview");
+  if (isPublicPreview === "true") {
+    // 인증 없이 통과
+    return NextResponse.next();
+  }
+
   // 세션 쿠키 확인
   const sessionCookie = request.cookies.get("azak_session");
 
