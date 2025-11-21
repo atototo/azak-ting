@@ -37,15 +37,23 @@ class RateLimiter:
         # Lazy initialization: Lock 생성 (event loop가 실행 중일 때만)
         # 이벤트 루프가 변경되면 Lock 재생성 필요
         try:
+            loop = asyncio.get_running_loop()
+
+            # Lock이 없거나, 다른 이벤트 루프에 바인딩된 경우 재생성
             if self._lock is None:
                 self._lock = asyncio.Lock()
-            # 현재 이벤트 루프 확인
-            loop = asyncio.get_running_loop()
-            if self._lock._loop is not loop:
-                # 이벤트 루프가 변경되면 새로운 Lock 생성
-                self._lock = asyncio.Lock()
-        except AttributeError:
-            # Lock에 _loop 속성이 없으면 재생성
+            else:
+                # Lock의 이벤트 루프 확인 (안전하게)
+                try:
+                    lock_loop = getattr(self._lock, '_loop', None)
+                    if lock_loop is not None and lock_loop is not loop:
+                        # 이벤트 루프가 변경되면 새로운 Lock 생성
+                        self._lock = asyncio.Lock()
+                except (AttributeError, RuntimeError):
+                    # 속성 접근 실패 시 재생성
+                    self._lock = asyncio.Lock()
+        except RuntimeError:
+            # 이벤트 루프가 없는 경우
             self._lock = asyncio.Lock()
 
         async with self._lock:
@@ -192,7 +200,24 @@ class TokenManager:
             )
         
         # Lazy initialization: Lock 생성 (event loop가 실행 중일 때만)
-        if TokenManager._lock is None:
+        try:
+            loop = asyncio.get_running_loop()
+
+            # Lock이 없거나, 다른 이벤트 루프에 바인딩된 경우 재생성
+            if TokenManager._lock is None:
+                TokenManager._lock = asyncio.Lock()
+            else:
+                # Lock의 이벤트 루프 확인 (안전하게)
+                try:
+                    lock_loop = getattr(TokenManager._lock, '_loop', None)
+                    if lock_loop is not None and lock_loop is not loop:
+                        # 이벤트 루프가 변경되면 새로운 Lock 생성
+                        TokenManager._lock = asyncio.Lock()
+                except (AttributeError, RuntimeError):
+                    # 속성 접근 실패 시 재생성
+                    TokenManager._lock = asyncio.Lock()
+        except RuntimeError:
+            # 이벤트 루프가 없는 경우
             TokenManager._lock = asyncio.Lock()
 
         async with TokenManager._lock:
