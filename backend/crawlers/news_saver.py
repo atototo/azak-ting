@@ -4,6 +4,7 @@
 크롤링한 뉴스를 데이터베이스에 저장합니다.
 """
 import logging
+import asyncio
 from typing import Optional, List
 from datetime import datetime
 
@@ -100,7 +101,7 @@ class NewsSaver:
         logger.debug("종목코드를 찾을 수 없음")
         return None
 
-    def save_news(self, news_data: NewsArticleData) -> Optional[NewsArticle]:
+    async def save_news(self, news_data: NewsArticleData) -> Optional[NewsArticle]:
         """
         뉴스를 데이터베이스에 저장합니다.
 
@@ -177,8 +178,12 @@ class NewsSaver:
             )
 
             # 자동 예측 실행 (종목코드가 있을 때만)
+            # 백그라운드 태스크로 실행하여 백엔드 블로킹 방지
             if self.auto_predict and self.predictor and stock_code:
-                self._run_prediction(news_article, stock_code)
+                asyncio.create_task(
+                    self._run_prediction_async(news_article, stock_code)
+                )
+                logger.info(f"📤 비동기 예측 태스크 생성: 뉴스 ID={news_article.id}")
 
             return news_article
 
@@ -187,10 +192,11 @@ class NewsSaver:
             logger.error(f"뉴스 저장 실패: {e}")
             return None
 
-    def _run_prediction(self, news_article: NewsArticle, stock_code: str):
+    async def _run_prediction_async(self, news_article: NewsArticle, stock_code: str):
         """
-        뉴스에 대한 멀티 모델 예측을 실행하고 저장합니다.
+        뉴스에 대한 멀티 모델 예측을 비동기로 실행하고 저장합니다.
 
+        백그라운드 태스크로 실행되어 뉴스 저장 요청을 블로킹하지 않습니다.
         알림은 전송하지 않습니다 (auto_notify.py에서 처리).
 
         Args:
@@ -198,7 +204,7 @@ class NewsSaver:
             stock_code: 종목 코드
         """
         try:
-            logger.info(f"멀티 모델 예측 실행 중: 뉴스 ID={news_article.id}, 종목={stock_code}")
+            logger.info(f"🔮 비동기 멀티 모델 예측 시작: 뉴스 ID={news_article.id}, 종목={stock_code}")
 
             # 0. 임베딩 기반 중복 검사 (예측 skip 여부 확인)
             news_text = f"{news_article.title} {news_article.content}"
@@ -260,7 +266,7 @@ class NewsSaver:
             # 예측 실패해도 뉴스 저장은 유지
             self.db.rollback()
 
-    def save_news_batch(
+    async def save_news_batch(
         self, news_list: List[NewsArticleData]
     ) -> tuple[int, int]:
         """
@@ -276,7 +282,7 @@ class NewsSaver:
         skipped_count = 0
 
         for news_data in news_list:
-            result = self.save_news(news_data)
+            result = await self.save_news(news_data)
             if result:
                 saved_count += 1
             else:

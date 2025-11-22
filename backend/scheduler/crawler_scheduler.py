@@ -121,7 +121,7 @@ class CrawlerScheduler:
                 with NaverNewsCrawler() as naver:
                     news_list = naver.fetch_news(limit=10)
                     if news_list:
-                        saved, skipped = saver.save_news_batch(news_list)
+                        saved, skipped = asyncio.run(saver.save_news_batch(news_list))
                         saved_total += saved
                         skipped_total += skipped
                         logger.info(f"   ✅ 네이버: {saved}건 저장, {skipped}건 스킵")
@@ -137,7 +137,7 @@ class CrawlerScheduler:
                 with HankyungNewsCrawler() as hankyung:
                     news_list = hankyung.fetch_news(limit=10)
                     if news_list:
-                        saved, skipped = saver.save_news_batch(news_list)
+                        saved, skipped = asyncio.run(saver.save_news_batch(news_list))
                         saved_total += saved
                         skipped_total += skipped
                         logger.info(f"   ✅ 한국경제: {saved}건 저장, {skipped}건 스킵")
@@ -153,7 +153,7 @@ class CrawlerScheduler:
                 with MaeilNewsCrawler() as maeil:
                     news_list = maeil.fetch_news(limit=10)
                     if news_list:
-                        saved, skipped = saver.save_news_batch(news_list)
+                        saved, skipped = asyncio.run(saver.save_news_batch(news_list))
                         saved_total += saved
                         skipped_total += skipped
                         logger.info(f"   ✅ 매일경제: {saved}건 저장, {skipped}건 스킵")
@@ -170,7 +170,7 @@ class CrawlerScheduler:
                 with RedditCrawler() as reddit:
                     news_list = reddit.fetch_news(limit=50)
                     if news_list:
-                        saved, skipped = saver.save_news_batch(news_list)
+                        saved, skipped = asyncio.run(saver.save_news_batch(news_list))
                         saved_total += saved
                         skipped_total += skipped
                         logger.info(f"   ✅ Reddit: {saved}건 저장, {skipped}건 스킵")
@@ -259,7 +259,7 @@ class CrawlerScheduler:
                             news.company_name = stock.name
                             # stock_code는 news_saver에서 자동 매칭되지만 명시적으로 설정 가능
 
-                        saved, skipped = saver.save_news_batch(news_list)
+                        saved, skipped = asyncio.run(saver.save_news_batch(news_list))
                         saved_total += saved
                         skipped_total += skipped
 
@@ -332,7 +332,7 @@ class CrawlerScheduler:
                         for disclosure in disclosures:
                             disclosure.company_name = stock.name
 
-                        saved, skipped = saver.save_news_batch(disclosures)
+                        saved, skipped = asyncio.run(saver.save_news_batch(disclosures))
                         saved_total += saved
                         skipped_total += skipped
 

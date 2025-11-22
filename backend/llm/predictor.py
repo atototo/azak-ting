@@ -1112,6 +1112,7 @@ class StockPredictor:
                     ],
                     temperature=0.3,
                     max_tokens=1000,
+                    timeout=30.0,  # 30초 타임아웃 (백엔드 블로킹 방지)
                 )
             else:
                 # OpenAI: JSON mode 사용
@@ -1126,6 +1127,7 @@ class StockPredictor:
                     ],
                     temperature=0.3,
                     max_tokens=1000,
+                    timeout=30.0,  # 30초 타임아웃
                     response_format={"type": "json_object"},
                 )
 
@@ -1306,6 +1308,7 @@ class StockPredictor:
                     ],
                     temperature=0.3,
                     max_tokens=4000 if is_reasoning_model else 1000,  # reasoning 모델은 더 많은 토큰 필요
+                    timeout=30.0,  # 30초 타임아웃
                 )
             else:  # openai
                 # reasoning 모델은 response_format 지원 안함
@@ -1317,6 +1320,7 @@ class StockPredictor:
                     ],
                     "temperature": 0.3,
                     "max_tokens": 4000 if is_reasoning_model else 1000,
+                    "timeout": 30.0,  # 30초 타임아웃
                 }
 
                 # 일반 모델만 response_format 사용
