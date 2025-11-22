@@ -1,14 +1,17 @@
 """
 뉴스 벡터 검색 모듈
 
-Milvus에서 유사한 과거 뉴스를 검색하고, 해당 뉴스의 주가 변동률을 조회합니다.
+FAISS에서 유사한 과거 뉴스를 검색하고, 해당 뉴스의 주가 변동률을 조회합니다.
 """
 import logging
-import threading
+import os
+import pickle
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+import threading
 
-from pymilvus import Collection, connections
+import faiss
+import numpy as np
 from sqlalchemy.orm import Session
 
 from backend.config import settings
@@ -21,12 +24,135 @@ logger = logging.getLogger(__name__)
 
 
 class NewsVectorSearch:
-    """뉴스 벡터 검색 클래스"""
+    """뉴스 벡터 검색 클래스 - FAISS 기반"""
 
     def __init__(self):
         """벡터 검색 초기화"""
         self.embedder = NewsEmbedder()
-        self.collection_name = "news_embeddings"
+        self.index_path = settings.FAISS_INDEX_PATH
+        self.metadata_path = settings.FAISS_METADATA_PATH
+        self._index = None
+        self._metadata = None
+        self._lock = threading.Lock()
+
+    def _ensure_index_dir(self):
+        """인덱스 디렉토리 생성"""
+        os.makedirs(os.path.dirname(self.index_path), exist_ok=True)
+        os.makedirs(os.path.dirname(self.metadata_path), exist_ok=True)
+
+    def _load_index(self):
+        """FAISS 인덱스 및 메타데이터 로드"""
+        with self._lock:
+            if self._index is not None:
+                return
+
+            if not os.path.exists(self.index_path) or not os.path.exists(self.metadata_path):
+                logger.warning("FAISS 인덱스가 존재하지 않습니다. 빈 인덱스로 초기화합니다.")
+                self._index = faiss.IndexFlatL2(settings.EMBEDDING_DIM)
+                self._metadata = []
+                return
+
+            try:
+                # FAISS 인덱스 로드
+                self._index = faiss.read_index(self.index_path)
+
+                # 메타데이터 로드
+                with open(self.metadata_path, 'rb') as f:
+                    self._metadata = pickle.load(f)
+
+                logger.info(f"FAISS 인덱스 로드 완료: {self._index.ntotal}개 벡터")
+
+            except Exception as e:
+                logger.error(f"FAISS 인덱스 로드 실패: {e}")
+                self._index = faiss.IndexFlatL2(settings.EMBEDDING_DIM)
+                self._metadata = []
+
+    def _save_index(self):
+        """FAISS 인덱스 및 메타데이터 저장"""
+        with self._lock:
+            try:
+                self._ensure_index_dir()
+
+                # FAISS 인덱스 저장
+                faiss.write_index(self._index, self.index_path)
+
+                # 메타데이터 저장
+                with open(self.metadata_path, 'wb') as f:
+                    pickle.dump(self._metadata, f)
+
+                logger.info(f"FAISS 인덱스 저장 완료: {self._index.ntotal}개 벡터")
+
+            except Exception as e:
+                logger.error(f"FAISS 인덱스 저장 실패: {e}")
+
+    def add_embeddings(
+        self,
+        news_ids: List[int],
+        embeddings: List[List[float]],
+        stock_codes: List[str],
+        published_timestamps: List[int],
+    ) -> int:
+        """
+        임베딩을 FAISS 인덱스에 추가합니다.
+
+        Args:
+            news_ids: 뉴스 ID 리스트
+            embeddings: 임베딩 벡터 리스트
+            stock_codes: 종목 코드 리스트
+            published_timestamps: 발행 시간 타임스탬프 리스트
+
+        Returns:
+            추가된 벡터 개수
+        """
+        if len(news_ids) != len(embeddings) != len(stock_codes) != len(published_timestamps):
+            logger.error("입력 리스트 길이가 일치하지 않습니다")
+            return 0
+
+        try:
+            self._load_index()
+
+            # numpy 배열로 변환
+            embeddings_np = np.array(embeddings, dtype=np.float32)
+
+            # FAISS 인덱스에 추가
+            self._index.add(embeddings_np)
+
+            # 메타데이터 추가
+            for i in range(len(news_ids)):
+                self._metadata.append({
+                    "news_article_id": news_ids[i],
+                    "stock_code": stock_codes[i],
+                    "published_timestamp": published_timestamps[i],
+                })
+
+            # 저장
+            self._save_index()
+
+            logger.info(f"FAISS에 {len(news_ids)}개 벡터 추가 완료")
+            return len(news_ids)
+
+        except Exception as e:
+            logger.error(f"FAISS 벡터 추가 실패: {e}")
+            return 0
+
+    def get_indexed_news_ids(self) -> set:
+        """
+        FAISS에 이미 인덱싱된 뉴스 ID 목록을 반환합니다.
+
+        Returns:
+            인덱싱된 뉴스 ID 집합
+        """
+        try:
+            self._load_index()
+
+            if not self._metadata:
+                return set()
+
+            return set(meta["news_article_id"] for meta in self._metadata)
+
+        except Exception as e:
+            logger.error(f"인덱싱된 뉴스 조회 실패: {e}")
+            return set()
 
     def search_similar_news(
         self,
@@ -55,73 +181,60 @@ class NewsVectorSearch:
                 ...
             ]
         """
-        # 스레드별 고유 alias 생성 (멀티스레드 환경에서 충돌 방지)
-        thread_id = threading.get_ident()
-        alias = f"search_{thread_id}"
-
         try:
+            self._load_index()
+
+            if self._index.ntotal == 0:
+                logger.warning("FAISS 인덱스가 비어있습니다")
+                return []
+
             # 1. 뉴스 텍스트 임베딩
             embedding = self.embedder.embed_text(news_text)
             if not embedding:
                 logger.error("뉴스 임베딩 생성 실패")
                 return []
 
-            # 2. Milvus 연결 (이미 연결되어 있으면 재사용)
-            try:
-                connections.connect(
-                    alias=alias,
-                    host=settings.MILVUS_HOST,
-                    port=settings.MILVUS_PORT,
-                )
-            except Exception as e:
-                # 이미 연결되어 있으면 무시
-                if "already exist" not in str(e).lower():
-                    raise
+            # numpy 배열로 변환
+            query_vector = np.array([embedding], dtype=np.float32)
 
-            # 3. 컬렉션 로드
-            collection = Collection(self.collection_name, using=alias)
-            collection.load()
+            # 2. FAISS 검색 (L2 거리)
+            # 종목 코드 필터링을 위해 여유있게 검색
+            search_k = top_k * 10 if stock_code else top_k * 2
+            distances, indices = self._index.search(query_vector, min(search_k, self._index.ntotal))
 
-            # 4. 검색 파라미터 설정
-            search_params = {
-                "metric_type": "L2",  # 유클리디안 거리
-                "params": {"nprobe": 10},
-            }
-
-            # 5. 필터 표현식 (종목 코드가 있는 경우)
-            expr = f'stock_code == "{stock_code}"' if stock_code else ""
-
-            # 6. 벡터 검색
-            results = collection.search(
-                data=[embedding],
-                anns_field="embedding",
-                param=search_params,
-                limit=top_k * 2,  # 임계값 필터링을 위해 여유있게 가져옴
-                expr=expr,
-                output_fields=["news_article_id", "stock_code", "published_timestamp"],
-            )
-
-            # 7. 결과 파싱
+            # 3. 결과 파싱
             similar_news = []
-            if results and len(results) > 0:
-                for hit in results[0]:
-                    # L2 거리를 코사인 유사도로 변환
-                    # L2 거리가 작을수록 유사함
-                    # 유사도 = 1 / (1 + L2_distance)
-                    distance = hit.distance
-                    similarity = 1 / (1 + distance)
 
-                    if similarity >= similarity_threshold:
-                        similar_news.append({
-                            "news_id": hit.entity.get("news_article_id"),
-                            "similarity": round(similarity, 4),
-                            "stock_code": hit.entity.get("stock_code"),
-                            "published_at": hit.entity.get("published_timestamp"),
-                        })
+            for i, (distance, idx) in enumerate(zip(distances[0], indices[0])):
+                if idx == -1:  # 유효하지 않은 인덱스
+                    continue
 
-                    # top_k개만 반환
-                    if len(similar_news) >= top_k:
-                        break
+                # 메타데이터 조회
+                if idx >= len(self._metadata):
+                    continue
+
+                meta = self._metadata[idx]
+
+                # 종목 코드 필터링
+                if stock_code and meta["stock_code"] != stock_code:
+                    continue
+
+                # L2 거리를 코사인 유사도로 변환
+                # L2 거리가 작을수록 유사함
+                # 유사도 = 1 / (1 + L2_distance)
+                similarity = 1 / (1 + float(distance))
+
+                if similarity >= similarity_threshold:
+                    similar_news.append({
+                        "news_id": meta["news_article_id"],
+                        "similarity": round(similarity, 4),
+                        "stock_code": meta["stock_code"],
+                        "published_at": meta["published_timestamp"],
+                    })
+
+                # top_k개만 반환
+                if len(similar_news) >= top_k:
+                    break
 
             logger.info(f"유사 뉴스 검색 완료: {len(similar_news)}건 (임계값: {similarity_threshold})")
             return similar_news
@@ -129,12 +242,6 @@ class NewsVectorSearch:
         except Exception as e:
             logger.error(f"벡터 검색 실패: {e}", exc_info=True)
             return []
-
-        finally:
-            try:
-                connections.disconnect(alias)
-            except Exception:
-                pass
 
     def get_news_with_price_changes(
         self,

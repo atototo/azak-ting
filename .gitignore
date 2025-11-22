@@ -81,8 +81,9 @@ Thumbs.db
 *.sqlite
 *.sqlite3
 
-# Milvus
+# Vector Database
 milvus_data/
+data/faiss/
 
 # Frontend (Next.js)
 frontend/node_modules/

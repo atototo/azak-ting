@@ -9,7 +9,6 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import text
-from pymilvus import connections, Collection
 import redis
 
 from backend.config import settings
@@ -18,6 +17,7 @@ from backend.db.models.news import NewsArticle
 from backend.db.models.stock import StockPrice
 from backend.db.models.match import NewsStockMatch
 from backend.scheduler.crawler_scheduler import get_crawler_scheduler
+from backend.llm.vector_search import get_vector_search
 
 
 logger = logging.getLogger(__name__)
@@ -38,24 +38,12 @@ def check_postgres() -> Dict[str, Any]:
         return {"status": "unhealthy", "error": str(e)}
 
 
-def check_milvus() -> Dict[str, Any]:
-    """Milvus 연결 상태 확인"""
+def check_faiss() -> Dict[str, Any]:
+    """FAISS 인덱스 상태 확인"""
     try:
-        # 기존 연결이 있으면 재사용
-        try:
-            connections.connect(
-                alias="health_check",
-                host=settings.MILVUS_HOST,
-                port=settings.MILVUS_PORT,
-            )
-        except Exception:
-            # 이미 연결되어 있으면 무시
-            pass
-
-        # 컬렉션 존재 확인
-        collection = Collection("news_embeddings", using="health_check")
-        collection.load()
-        count = collection.num_entities
+        vector_search = get_vector_search()
+        indexed_ids = vector_search.get_indexed_news_ids()
+        count = len(indexed_ids)
 
         return {
             "status": "healthy",
@@ -63,7 +51,7 @@ def check_milvus() -> Dict[str, Any]:
             "embeddings_count": count
         }
     except Exception as e:
-        logger.error(f"Milvus 연결 실패: {e}")
+        logger.error(f"FAISS 조회 실패: {e}")
         return {"status": "unhealthy", "error": str(e)}
 
 
@@ -92,13 +80,13 @@ async def health_check():
         시스템 상태 정보
     """
     postgres = check_postgres()
-    milvus = check_milvus()
+    faiss = check_faiss()
     redis_check = check_redis()
 
     # 전체 상태 판단
     overall_healthy = all([
         postgres["status"] == "healthy",
-        milvus["status"] == "healthy",
+        faiss["status"] == "healthy",
         redis_check["status"] == "healthy",
     ])
 
@@ -107,7 +95,7 @@ async def health_check():
         "timestamp": datetime.now().isoformat(),
         "components": {
             "postgres": postgres,
-            "milvus": milvus,
+            "faiss": faiss,
             "redis": redis_check,
         }
     }
@@ -167,18 +155,13 @@ async def get_stats():
         # 매칭 통계
         total_matches = db.query(NewsStockMatch).count()
 
-        # Milvus 임베딩 통계
+        # FAISS 임베딩 통계
         try:
-            connections.connect(
-                alias="stats",
-                host=settings.MILVUS_HOST,
-                port=settings.MILVUS_PORT,
-            )
-            collection = Collection("news_embeddings")
-            embeddings_count = collection.num_entities
-            connections.disconnect("stats")
+            vector_search = get_vector_search()
+            indexed_ids = vector_search.get_indexed_news_ids()
+            embeddings_count = len(indexed_ids)
         except Exception as e:
-            logger.warning(f"Milvus 통계 조회 실패: {e}")
+            logger.warning(f"FAISS 통계 조회 실패: {e}")
             embeddings_count = 0
 
         # 스케줄러 통계
@@ -221,7 +204,7 @@ async def get_stats():
                 },
                 "matches": total_matches,
             },
-            "milvus": {
+            "faiss": {
                 "embeddings": embeddings_count,
             },
             "scheduler": scheduler_stats,

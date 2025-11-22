@@ -25,9 +25,9 @@ class Settings(BaseSettings):
         """SQLAlchemy용 데이터베이스 URL"""
         return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
-    # Milvus
-    MILVUS_HOST: str = "localhost"
-    MILVUS_PORT: int = 19530
+    # FAISS (Vector Search)
+    FAISS_INDEX_PATH: str = "data/faiss/news_embeddings.index"
+    FAISS_METADATA_PATH: str = "data/faiss/news_metadata.pkl"
 
     # Redis
     REDIS_HOST: str = "localhost"
@@ -39,10 +39,13 @@ class Settings(BaseSettings):
         """Celery용 Redis URL"""
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
 
-    # OpenAI (Backup)
+    # Embedding Model (Local)
+    EMBEDDING_MODEL_NAME: str = "BM-K/KoSimCSE-roberta"
+    EMBEDDING_DIM: int = 768
+
+    # OpenAI (Backup - LLM only)
     OPENAI_API_KEY: str
     OPENAI_MODEL: str = "gpt-4o"
-    OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
 
     # OpenRouter (Primary LLM)
     OPENROUTER_API_KEY: str = ""

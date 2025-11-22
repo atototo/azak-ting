@@ -26,6 +26,13 @@ YYYY-MM-DD-{feature-name}.md
 
 ## 업데이트 목록
 
+### 2025-11-22
+- **[FAISS Migration](./2025-11-22-faiss-migration.md)**
+  - Milvus → FAISS 벡터 데이터베이스 전환
+  - OpenAI API → 로컬 한국어 임베딩 모델(KoSimCSE) 전환
+  - 7,040건 뉴스 재임베딩 및 마이그레이션 완료
+  - 비용 절감 ($0.00002/임베딩 → $0) 및 한국어 성능 개선
+
 ### 2025-11-21
 - **[Reasoning Model Support](./2025-11-21-reasoning-model-support.md)**
   - OpenAI reasoning 모델(gpt-5-mini, o1, o3) 지원 추가
