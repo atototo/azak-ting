@@ -1,0 +1,64 @@
+name: 'issue-to-docs'
+description: '개발 중 발견한 이슈나 기능 수정을 체계적으로 추적하고 문서화하는 완전한 개발 프로세스 (GitHub 이슈 → 브랜치 → 테스트 → PR → 상세 문서)'
+author: 'young'
+
+# Paths
+installed_path: '{project-root}/.bmad/custom/workflows/issue-to-docs'
+template: '{installed_path}/template.md'
+instructions: '{installed_path}/instructions.md'
+validation: '{installed_path}/checklist.md'
+
+# Critical variables from config
+config_source: '{project-root}/.bmad/bmb/config.yaml'
+output_folder: '{config_source}:output_folder'
+user_name: '{config_source}:user_name'
+communication_language: '{config_source}:communication_language'
+document_output_language: '{config_source}:document_output_language'
+date: system-generated
+
+# Output
+default_output_file: '{output_folder}/updates/{{date}}-{{change_title}}.md'
+
+# Invocation control
+standalone: true
+
+# Azak Preview URL settings (for screenshot capture)
+azak_base_url: 'https://azak.ngrok.app/preview'
+azak_token: '09d1cddeaf2e87bb61cf7a1f98bba17ad941f3e5eb9ef40f83719a97b332ef19'
+
+# Preview paths
+azak_dashboard_path: '/dashboard'
+azak_stocks_list_path: '/stocks'
+azak_stock_detail_path: '/stocks/{{stock_code}}'
+
+# Playwright MCP settings
+screenshot_output: '{project-root}/.playwright-mcp'
+screenshots_folder: '{output_folder}/screenshots'
+
+# Input parameters (runtime - 사용자가 제공)
+issue_number: ''              # GitHub 이슈 번호 (자동 생성 또는 기존)
+change_title: ''              # 변경사항 제목 (kebab-case)
+change_type: ''               # bug-fix, feature, refactor, docs, etc.
+app_url: ''                   # 스크린샷 캡처할 URL (선택사항)
+stock_code: ''                # Azak 종목 상세 페이지용 (선택사항)
+
+# 현재 상태 (workflow entry point)
+current_stage: ''             # discovered, fixing, testing, done
+already_created_branch: false
+already_fixed: false
+already_tested: false
+
+# Git settings
+branch_prefix: 'feature/issue-'  # 브랜치 명명 규칙
+base_branch: 'main'              # 기본 브랜치
+
+# Agent references (multi-agent orchestration)
+agents:
+  analyst: '{project-root}/.bmad/bmm/agents/analyst.md'
+  dev: '{project-root}/.bmad/bmm/agents/dev.md'
+  tech_writer: '{project-root}/.bmad/bmm/agents/tech-writer.md'
+  pm: '{project-root}/.bmad/bmm/agents/pm.md'
+  sm: '{project-root}/.bmad/bmm/agents/sm.md'
+
+# Reference document (for style guidance)
+reference_doc: '{output_folder}/updates/2025-11-21-unified-report-architecture.md'

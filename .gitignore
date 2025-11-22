@@ -112,3 +112,6 @@ test_*.json
 # Documentation Archives and Reports
 docs/.archive/
 docs/project-scan-report*.json
+
+# Workflow Temporary Files
+.workflow-temp/
