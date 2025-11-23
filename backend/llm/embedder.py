@@ -5,6 +5,7 @@ HuggingFace Transformers (BM-K/KoSimCSE-roberta)를 사용하여 뉴스를 벡�
 로컬 한글 임베딩 모델로 OpenAI API 비용 절감 및 성능 개선
 """
 import logging
+import threading
 from typing import List, Optional, Dict, Tuple
 from datetime import datetime
 import time
@@ -275,20 +276,30 @@ class NewsEmbedder:
             return 0, 0
 
 
-# 싱글톤 인스턴스
+# 싱글톤 인스턴스 (Thread-safe)
 _news_embedder: Optional[NewsEmbedder] = None
+_embedder_lock = threading.Lock()
 
 
 def get_news_embedder() -> NewsEmbedder:
     """
-    NewsEmbedder 싱글톤 인스턴스를 반환합니다.
+    NewsEmbedder 싱글톤 인스턴스를 반환합니다 (Thread-safe).
+
+    Double-checked locking 패턴을 사용하여 멀티스레드 환경에서
+    안전하게 싱글톤을 생성합니다.
 
     Returns:
         NewsEmbedder 인스턴스
     """
     global _news_embedder
+
+    # First check (without lock) - 성능 최적화
     if _news_embedder is None:
-        _news_embedder = NewsEmbedder()
+        with _embedder_lock:
+            # Second check (with lock) - thread-safety 보장
+            if _news_embedder is None:
+                _news_embedder = NewsEmbedder()
+
     return _news_embedder
 
 

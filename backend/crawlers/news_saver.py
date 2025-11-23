@@ -17,7 +17,7 @@ from backend.utils.stock_mapping import get_stock_mapper
 from backend.utils.deduplicator import get_deduplicator
 from backend.utils.embedding_deduplicator import get_embedding_deduplicator
 from backend.utils.encoding_normalizer import get_encoding_normalizer
-from backend.llm.predictor import StockPredictor
+from backend.llm.predictor import get_predictor
 from backend.llm.vector_search import get_vector_search
 
 
@@ -40,12 +40,12 @@ class NewsSaver:
         self.embedding_deduplicator = get_embedding_deduplicator()
         self.encoding_normalizer = get_encoding_normalizer()
 
-        # 자동 예측이 활성화되어 있으면 predictor 초기화
+        # 자동 예측이 활성화되어 있으면 싱글톤 predictor 사용
         self.predictor = None
         if self.auto_predict:
             try:
-                self.predictor = StockPredictor()
-                logger.info("자동 예측 시스템 활성화")
+                self.predictor = get_predictor()  # 싱글톤 사용 (메모리 절약)
+                logger.info("자동 예측 시스템 활성화 (싱글톤)")
             except Exception as e:
                 logger.warning(f"예측 시스템 초기화 실패, 자동 예측 비활성화: {e}")
                 self.auto_predict = False

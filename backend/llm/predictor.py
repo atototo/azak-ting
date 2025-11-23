@@ -5,6 +5,7 @@
 """
 import logging
 import json
+import threading
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 
@@ -1598,18 +1599,28 @@ class StockPredictor:
         }
 
 
-# 싱글톤 인스턴스
+# 싱글톤 인스턴스 (Thread-safe)
 _predictor: Optional[StockPredictor] = None
+_predictor_lock = threading.Lock()
 
 
 def get_predictor() -> StockPredictor:
     """
-    StockPredictor 싱글톤 인스턴스를 반환합니다.
+    StockPredictor 싱글톤 인스턴스를 반환합니다 (Thread-safe).
+
+    Double-checked locking 패턴을 사용하여 멀티스레드 환경에서
+    안전하게 싱글톤을 생성합니다.
 
     Returns:
         StockPredictor 인스턴스
     """
     global _predictor
+
+    # First check (without lock) - 성능 최적화
     if _predictor is None:
-        _predictor = StockPredictor()
+        with _predictor_lock:
+            # Second check (with lock) - thread-safety 보장
+            if _predictor is None:
+                _predictor = StockPredictor()
+
     return _predictor

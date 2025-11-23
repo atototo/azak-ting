@@ -15,7 +15,7 @@ import numpy as np
 from sqlalchemy.orm import Session
 
 from backend.config import settings
-from backend.llm.embedder import NewsEmbedder
+from backend.llm.embedder import get_news_embedder
 from backend.db.models.news import NewsArticle
 from backend.db.models.match import NewsStockMatch
 
@@ -28,7 +28,7 @@ class NewsVectorSearch:
 
     def __init__(self):
         """벡터 검색 초기화"""
-        self.embedder = NewsEmbedder()
+        self.embedder = get_news_embedder()  # 싱글톤 사용
         self.index_path = settings.FAISS_INDEX_PATH
         self.metadata_path = settings.FAISS_METADATA_PATH
         self._index = None

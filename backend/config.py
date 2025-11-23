@@ -103,9 +103,12 @@ class Settings(BaseSettings):
     # 프리뷰 (블로그 캡처용)
     PREVIEW_TOKEN: str = ""
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "case_sensitive": True,
+        "extra": "ignore",
+    }
 
 
 # 전역 설정 객체 (싱글톤)
