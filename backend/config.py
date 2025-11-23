@@ -29,16 +29,6 @@ class Settings(BaseSettings):
     FAISS_INDEX_PATH: str = "data/faiss/news_embeddings.index"
     FAISS_METADATA_PATH: str = "data/faiss/news_metadata.pkl"
 
-    # Redis
-    REDIS_HOST: str = "localhost"
-    REDIS_PORT: int = 6379
-    REDIS_DB: int = 0
-
-    @property
-    def REDIS_URL(self) -> str:
-        """Celery용 Redis URL"""
-        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
-
     # Embedding Model (Local)
     EMBEDDING_MODEL_NAME: str = "BM-K/KoSimCSE-roberta"
     EMBEDDING_DIM: int = 768
@@ -104,7 +94,7 @@ class Settings(BaseSettings):
     PREVIEW_TOKEN: str = ""
 
     model_config = {
-        "env_file": ".env",
+        "env_file": ".env",  # 프로젝트 루트의 .env
         "env_file_encoding": "utf-8",
         "case_sensitive": True,
         "extra": "ignore",

@@ -11,8 +11,10 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 
 import httpx
-import redis
 from backend.config import settings
+from backend.db.session import SessionLocal
+from backend.db.models.kis_token import KISToken
+from sqlalchemy import text
 
 
 logger = logging.getLogger(__name__)
@@ -87,15 +89,12 @@ class RateLimiter:
 
 
 class TokenManager:
-    """OAuth 2.0 Token 관리자 (싱글톤, Redis 기반)"""
+    """OAuth 2.0 Token 관리자 (싱글톤, PostgreSQL 기반)"""
 
     _instance = None
     _lock = None  # Lazy initialization to avoid event loop binding issues
-    REDIS_KEY = "kis:access_token"
-    REDIS_EXPIRY_KEY = "kis:token_expires_at"
-    REDIS_RATE_LIMIT_COUNT_KEY = "kis:rate_limit_error_count"
-    REDIS_CIRCUIT_BREAKER_KEY = "kis:circuit_breaker_until"
-    
+    TOKEN_TYPE = "access_token"
+
     # Rate limit 설정
     MAX_RATE_LIMIT_RETRIES = 3  # 최대 재시도 횟수
     CIRCUIT_BREAKER_DURATION = 300  # Circuit Breaker 지속 시간 (초, 5분)
@@ -116,69 +115,33 @@ class TokenManager:
         self.base_url = base_url
         self.mock_mode = mock_mode
 
-        # Redis 클라이언트 초기화
-        self.redis_client = redis.Redis(
-            host=settings.REDIS_HOST,
-            port=settings.REDIS_PORT,
-            db=settings.REDIS_DB,
-            decode_responses=True,
-        )
-
-        # 메모리 기반 fallback (Redis 실패 시 사용)
+        # 메모리 기반 Rate Limit 카운터
         self._memory_rate_limit_count = 0
         self._memory_circuit_breaker_until: Optional[datetime] = None
-        
+
         self.initialized = True
-        logger.info("🔑 TokenManager 싱글톤 초기화 완료 (Redis 연동)")
+        logger.info("🔑 TokenManager 싱글톤 초기화 완료 (PostgreSQL 연동)")
 
     def _check_circuit_breaker(self) -> bool:
         """
-        Circuit Breaker 상태 확인 (Redis 우선, 실패 시 메모리 fallback)
-        
+        Circuit Breaker 상태 확인 (메모리 기반)
+
         Returns:
             Circuit Breaker가 활성화되어 있으면 True
         """
-        # Redis에서 확인 시도
-        try:
-            circuit_breaker_until_str = self.redis_client.get(self.REDIS_CIRCUIT_BREAKER_KEY)
-            if circuit_breaker_until_str:
-                circuit_breaker_until = datetime.fromisoformat(circuit_breaker_until_str)
-                if datetime.now() < circuit_breaker_until:
-                    remaining = (circuit_breaker_until - datetime.now()).total_seconds()
-                    logger.warning(
-                        f"🚫 Circuit Breaker 활성화됨 (Redis) "
-                        f"(남은 시간: {remaining:.0f}초) - 토큰 발급 시도 차단"
-                    )
-                    return True
-                else:
-                    # Circuit Breaker 만료 - 리셋
-                    try:
-                        self.redis_client.delete(self.REDIS_CIRCUIT_BREAKER_KEY)
-                        self.redis_client.delete(self.REDIS_RATE_LIMIT_COUNT_KEY)
-                    except:
-                        pass  # Redis 실패해도 계속 진행
-                    logger.info("✅ Circuit Breaker 만료 - 정상 상태로 복구")
-            return False
-        except redis.RedisError as e:
-            logger.warning(f"⚠️  Redis Circuit Breaker 확인 실패, 메모리 fallback 사용: {e}")
-            # Redis 실패 시 메모리 기반 확인
-            if self._memory_circuit_breaker_until:
-                if datetime.now() < self._memory_circuit_breaker_until:
-                    remaining = (self._memory_circuit_breaker_until - datetime.now()).total_seconds()
-                    logger.warning(
-                        f"🚫 Circuit Breaker 활성화됨 (메모리) "
-                        f"(남은 시간: {remaining:.0f}초) - 토큰 발급 시도 차단"
-                    )
-                    return True
-                else:
-                    # 만료 - 리셋
-                    self._memory_circuit_breaker_until = None
-                    self._memory_rate_limit_count = 0
-                    logger.info("✅ Circuit Breaker 만료 (메모리) - 정상 상태로 복구")
-            return False
-        except Exception as e:
-            logger.warning(f"⚠️  Circuit Breaker 확인 실패: {e}")
-            return False
+        if self._memory_circuit_breaker_until:
+            if datetime.now() < self._memory_circuit_breaker_until:
+                remaining = (self._memory_circuit_breaker_until - datetime.now()).total_seconds()
+                logger.warning(
+                    f"🚫 Circuit Breaker 활성화됨 (남은 시간: {remaining:.0f}초) - 토큰 발급 시도 차단"
+                )
+                return True
+            else:
+                # 만료 - 리셋
+                self._memory_circuit_breaker_until = None
+                self._memory_rate_limit_count = 0
+                logger.info("✅ Circuit Breaker 만료 - 정상 상태로 복구")
+        return False
 
     async def get_access_token(self) -> str:
         """
@@ -222,31 +185,41 @@ class TokenManager:
 
         async with TokenManager._lock:
             try:
-                # Redis에서 토큰 조회
-                access_token = self.redis_client.get(self.REDIS_KEY)
-                token_expires_at_str = self.redis_client.get(self.REDIS_EXPIRY_KEY)
+                # PostgreSQL에서 토큰 조회
+                db = SessionLocal()
+                try:
+                    token_record = db.query(KISToken).filter(
+                        KISToken.token_type == self.TOKEN_TYPE
+                    ).first()
 
-                if access_token and token_expires_at_str:
-                    token_expires_at = datetime.fromisoformat(token_expires_at_str)
-                    remaining = (token_expires_at - datetime.now()).total_seconds()
+                    if token_record and token_record.expires_at:
+                        remaining = (token_record.expires_at - datetime.now()).total_seconds()
 
-                    # 만료 5분 전에 갱신
-                    if remaining > 300:  # 5분 = 300초
-                        logger.debug(f"✅ Redis에서 토큰 조회 (유효시간: {remaining/3600:.1f}시간)")
-                        return access_token
-                    else:
-                        logger.info(f"⏰ 토큰 만료 임박 (남은 시간: {remaining:.0f}초), 갱신 필요")
+                        # 만료 5분 전에 갱신
+                        if remaining > 300:  # 5분 = 300초
+                            logger.debug(f"✅ DB에서 토큰 조회 (유효시간: {remaining/3600:.1f}시간)")
+                            return token_record.token_value
+                        else:
+                            logger.info(f"⏰ 토큰 만료 임박 (남은 시간: {remaining:.0f}초), 갱신 필요")
+                finally:
+                    db.close()
 
-            except redis.RedisError as e:
-                logger.warning(f"⚠️  Redis 조회 실패, 토큰 재발급: {e}")
+            except Exception as e:
+                logger.warning(f"⚠️  DB 조회 실패, 토큰 재발급: {e}")
 
             # 토큰 갱신
             logger.info("🔑 Access Token 갱신 중...")
             await self._refresh_token()
 
-            # Redis에서 다시 조회하여 반환
-            access_token = self.redis_client.get(self.REDIS_KEY)
-            return access_token
+            # DB에서 다시 조회하여 반환
+            db = SessionLocal()
+            try:
+                token_record = db.query(KISToken).filter(
+                    KISToken.token_type == self.TOKEN_TYPE
+                ).first()
+                return token_record.token_value if token_record else None
+            finally:
+                db.close()
 
     def _handle_rate_limit_error(self, error_response: str) -> None:
         """
@@ -267,60 +240,30 @@ class TokenManager:
 
             # EGW00133: Rate Limit 에러인지 확인
             if error_code == "EGW00133" or "1분당 1회" in error_description:
-                # Rate limit 에러 카운터 증가 (Redis 우선, 실패 시 메모리)
-                current_count = 0
-                redis_available = False
-                
-                try:
-                    redis_count = self.redis_client.get(self.REDIS_RATE_LIMIT_COUNT_KEY)
-                    current_count = int(redis_count) if redis_count else 0
-                    current_count += 1
-                    
-                    self.redis_client.set(
-                        self.REDIS_RATE_LIMIT_COUNT_KEY,
-                        str(current_count),
-                        ex=600  # 10분 TTL
-                    )
-                    redis_available = True
-                except redis.RedisError as e:
-                    logger.warning(f"⚠️  Redis Rate Limit 카운터 저장 실패, 메모리 fallback 사용: {e}")
-                    # 메모리 기반 카운터 사용
-                    self._memory_rate_limit_count += 1
-                    current_count = self._memory_rate_limit_count
-                
+                # Rate limit 에러 카운터 증가 (메모리 기반)
+                self._memory_rate_limit_count += 1
+                current_count = self._memory_rate_limit_count
+
                 logger.warning(
                     f"⚠️  Rate Limit 에러 발생 ({current_count}/{self.MAX_RATE_LIMIT_RETRIES}회): "
                     f"{error_description}"
                 )
-                
+
                 # 최대 재시도 횟수 초과 시 Circuit Breaker 활성화
                 if current_count >= self.MAX_RATE_LIMIT_RETRIES:
                     circuit_breaker_until = datetime.now() + timedelta(
                         seconds=self.CIRCUIT_BREAKER_DURATION
                     )
-                    
-                    # Redis에 저장 시도
-                    if redis_available:
-                        try:
-                            self.redis_client.set(
-                                self.REDIS_CIRCUIT_BREAKER_KEY,
-                                circuit_breaker_until.isoformat(),
-                                ex=self.CIRCUIT_BREAKER_DURATION + 60  # TTL은 지속 시간 + 1분 버퍼
-                            )
-                        except redis.RedisError:
-                            logger.warning("⚠️  Redis Circuit Breaker 저장 실패, 메모리 fallback 사용")
-                            redis_available = False
-                    
-                    # Redis 실패 시 메모리에 저장
-                    if not redis_available:
-                        self._memory_circuit_breaker_until = circuit_breaker_until
-                    
+
+                    # 메모리에 저장
+                    self._memory_circuit_breaker_until = circuit_breaker_until
+
                     logger.error(
-                        f"🚫 Circuit Breaker 활성화 ({'Redis' if redis_available else '메모리'}): "
+                        f"🚫 Circuit Breaker 활성화: "
                         f"Rate Limit 에러 {current_count}회 연속 발생. "
                         f"{self.CIRCUIT_BREAKER_DURATION}초 동안 토큰 발급 중단"
                     )
-                    
+
                     # Telegram 알림 발송
                     self._send_rate_limit_alert(current_count, error_description)
         except Exception as e:
@@ -383,31 +326,45 @@ class TokenManager:
                 expires_in = int(data.get("expires_in", 86400))  # 기본 24시간
                 token_expires_at = datetime.now() + timedelta(seconds=expires_in)
 
-                # Redis에 저장
+                # PostgreSQL에 저장 (UPSERT)
                 try:
-                    self.redis_client.set(self.REDIS_KEY, access_token)
-                    self.redis_client.set(self.REDIS_EXPIRY_KEY, token_expires_at.isoformat())
-
-                    # TTL 설정 (만료 시간 + 버퍼 10분)
-                    ttl_seconds = expires_in + 600
-                    self.redis_client.expire(self.REDIS_KEY, ttl_seconds)
-                    self.redis_client.expire(self.REDIS_EXPIRY_KEY, ttl_seconds)
-
-                    # 성공 시 Rate limit 카운터 리셋 (Redis + 메모리)
+                    db = SessionLocal()
                     try:
-                        self.redis_client.delete(self.REDIS_RATE_LIMIT_COUNT_KEY)
-                    except redis.RedisError:
-                        pass  # Redis 실패해도 계속 진행
-                    self._memory_rate_limit_count = 0
-                    self._memory_circuit_breaker_until = None
+                        # 기존 토큰 확인
+                        token_record = db.query(KISToken).filter(
+                            KISToken.token_type == self.TOKEN_TYPE
+                        ).first()
 
-                    logger.info(
-                        f"✅ Access Token 발급 및 Redis 저장 완료 "
-                        f"(만료: {token_expires_at.strftime('%Y-%m-%d %H:%M:%S')})"
-                    )
+                        if token_record:
+                            # 업데이트
+                            token_record.token_value = access_token
+                            token_record.expires_at = token_expires_at
+                            token_record.updated_at = datetime.now()
+                        else:
+                            # 신규 생성
+                            token_record = KISToken(
+                                token_type=self.TOKEN_TYPE,
+                                token_value=access_token,
+                                expires_at=token_expires_at
+                            )
+                            db.add(token_record)
 
-                except redis.RedisError as e:
-                    logger.error(f"❌ Redis 저장 실패: {e}")
+                        db.commit()
+
+                        # 성공 시 Rate limit 카운터 리셋
+                        self._memory_rate_limit_count = 0
+                        self._memory_circuit_breaker_until = None
+
+                        logger.info(
+                            f"✅ Access Token 발급 및 DB 저장 완료 "
+                            f"(만료: {token_expires_at.strftime('%Y-%m-%d %H:%M:%S')})"
+                        )
+
+                    finally:
+                        db.close()
+
+                except Exception as e:
+                    logger.error(f"❌ DB 저장 실패: {e}")
                     raise
 
         except Exception as e:

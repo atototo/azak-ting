@@ -3,6 +3,7 @@ APScheduler 설정 및 크론 작업 관리
 
 주요 스케줄:
 - 1분봉 데이터 수집: 매 1분 (장 시간 09:00-15:30)
+- 1분봉 데이터 정리: 매일 03:00 (30일 이상 된 데이터 삭제)
 - 일봉 데이터 수집: 매일 16:00
 - 리포트 생성: 매일 16:30
 """
@@ -14,6 +15,7 @@ from datetime import datetime
 
 from backend.utils.market_hours import is_market_open
 from backend.crawlers.kis_minute_collector import run_minute_collector
+from backend.db.session import SessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -55,12 +57,37 @@ async def minute_price_job():
         logger.error(f"❌ 1분봉 수집 작업 실패: {e}", exc_info=True)
 
 
+async def cleanup_old_minute_data():
+    """
+    30일 이상 된 1분봉 데이터 정리
+
+    - 실행 주기: 매일 03:00
+    - 보관 정책: 30일 (Supabase 500MB 제한 고려)
+    """
+    try:
+        logger.info("🧹 1분봉 데이터 정리 작업 시작")
+
+        db = SessionLocal()
+        try:
+            # PostgreSQL 함수 호출
+            result = db.execute("SELECT public.cleanup_old_minute_data()")
+            db.commit()
+
+            logger.info("✅ 1분봉 데이터 정리 완료")
+        finally:
+            db.close()
+
+    except Exception as e:
+        logger.error(f"❌ 1분봉 데이터 정리 실패: {e}", exc_info=True)
+
+
 def setup_jobs():
     """
     모든 스케줄 작업 등록
 
     작업 목록:
     - minute_price_job: 1분봉 데이터 수집 (매 1분)
+    - cleanup_old_minute_data: 1분봉 데이터 정리 (매일 03:00)
     """
     sched = get_scheduler()
 
@@ -76,8 +103,20 @@ def setup_jobs():
         misfire_grace_time=30,  # 30초 이내 지연 허용
     )
 
+    # 1분봉 데이터 정리 (매일 03:00)
+    sched.add_job(
+        cleanup_old_minute_data,
+        trigger=CronTrigger(hour=3, minute=0),
+        id="cleanup_minute_data",
+        name="1분봉 데이터 정리",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+
     logger.info("✅ 스케줄 작업 등록 완료")
     logger.info(f"   - 1분봉 수집: 매 1분 (장 시간만)")
+    logger.info(f"   - 1분봉 정리: 매일 03:00 (30일 이상)")
 
 
 def start_scheduler():

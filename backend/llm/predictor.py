@@ -13,7 +13,6 @@ from openai import OpenAI
 from sqlalchemy.orm import Session
 
 from backend.config import settings
-from backend.llm.prediction_cache import get_prediction_cache
 from backend.db.models.stock import StockPrice, Stock
 from backend.db.models.news import NewsArticle
 from backend.db.models.model import Model
@@ -47,7 +46,9 @@ class StockPredictor:
             self.model = settings.OPENAI_MODEL
             logger.info(f"OpenAI 모델 사용: {self.model}")
 
-        self.cache = get_prediction_cache()
+        # 메모리 기반 캐시 (간단한 딕셔너리)
+        self._memory_cache: Dict[str, Dict[str, Any]] = {}
+        self._cache_lock = threading.Lock()
 
         # 멀티모델: DB에서 활성 모델 로드
         self.active_models = self._load_active_models()
@@ -1084,13 +1085,15 @@ class StockPredictor:
         """
         stock_code = current_news.get("stock_code")
 
-        # 1. 캐시 확인
+        # 1. 캐시 확인 (메모리 기반)
         if use_cache and news_id and stock_code:
-            cached_result = self.cache.get(news_id, stock_code)
-            if cached_result:
-                logger.info(f"캐시된 예측 반환: news_id={news_id}")
-                cached_result["cached"] = True
-                return cached_result
+            cache_key = f"{news_id}:{stock_code}"
+            with self._cache_lock:
+                if cache_key in self._memory_cache:
+                    cached_result = self._memory_cache[cache_key]
+                    logger.info(f"캐시된 예측 반환: news_id={news_id}")
+                    cached_result["cached"] = True
+                    return cached_result
 
         # 2. 캐시 미스 → LLM 예측 수행
         try:
@@ -1218,9 +1221,11 @@ class StockPredictor:
                 f"긴급도: {result['urgency_level']}"
             )
 
-            # 6. 캐시 저장
+            # 6. 캐시 저장 (메모리 기반)
             if use_cache and news_id and stock_code:
-                self.cache.set(news_id, stock_code, result)
+                cache_key = f"{news_id}:{stock_code}"
+                with self._cache_lock:
+                    self._memory_cache[cache_key] = result
                 logger.info(f"예측 결과 캐시 저장: news_id={news_id}")
 
             return result

@@ -1,55 +1,58 @@
 version: '3.8'
 
+# ============================================
+# Supabase 마이그레이션 완료 (2025-11-23)
+# ============================================
+# - PostgreSQL → Supabase (Cloud)
+# - Redis → 제거 (메모리 캐싱으로 대체)
+# - 현재 PM2로 직접 실행 중
+# ============================================
+
 services:
-  # PostgreSQL
-  postgres:
-    image: postgres:13-alpine
-    container_name: azak-postgres
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
-      POSTGRES_DB: ${POSTGRES_DB:-azak}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./db-init:/docker-entrypoint-initdb.d
-    ports:
-      - "5432:5432"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # PostgreSQL (DEPRECATED - Supabase로 이전됨)
+  # postgres:
+  #   image: postgres:13-alpine
+  #   container_name: azak-postgres
+  #   environment:
+  #     POSTGRES_USER: ${POSTGRES_USER:-postgres}
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+  #     POSTGRES_DB: ${POSTGRES_DB:-azak}
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #     - ./db-init:/docker-entrypoint-initdb.d
+  #   ports:
+  #     - "5432:5432"
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U postgres"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
 
-  # Redis
-  redis:
-    image: redis:7-alpine
-    container_name: azak-redis
-    volumes:
-      - redis_data:/data
-      # 호스트 파일 직접 마운트 제거 (Resource busy 에러 근본 원인 해결)
-      # - ./redis-init/dump.rdb:/data/dump.rdb
-    ports:
-      - "6380:6379"
-    restart: unless-stopped
-    # RDB 스냅샷 완전 비활성화 (디스크 저장 문제 근본 해결)
-    # --save "": RDB 스냅샷 저장 비활성화
-    # --dbfilename "": RDB 파일명을 빈 값으로 설정하여 파일 생성 방지
-    # --stop-writes-on-bgsave-error no: 디스크 저장 실패 시에도 쓰기 허용
-    command: >
-      sh -c "
-      rm -f /data/dump.rdb 2>/dev/null || true &&
-      redis-server
-      --save ''
-      --dbfilename ''
-      --stop-writes-on-bgsave-error no
-      "
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
+  # Redis (DEPRECATED - 메모리 캐싱으로 대체)
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: azak-redis
+  #   volumes:
+  #     - redis_data:/data
+  #   ports:
+  #     - "6380:6379"
+  #   restart: unless-stopped
+  #   command: >
+  #     sh -c "
+  #     rm -f /data/dump.rdb 2>/dev/null || true &&
+  #     redis-server
+  #     --save ''
+  #     --dbfilename ''
+  #     --stop-writes-on-bgsave-error no
+  #     "
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 10s
+  #     timeout: 3s
+  #     retries: 5
 
+  # Backend (Docker용 - 현재 PM2 사용 중)
   backend:
     build:
       context: ..
@@ -57,13 +60,14 @@ services:
     container_name: azak-backend
     env_file:
       - ../.env
-    depends_on:
-      - postgres
-      - redis
+    # depends_on:
+    #   - postgres  # Supabase 사용으로 제거
+    #   - redis     # 메모리 캐싱으로 제거
     ports:
       - "8000:8000"
     restart: unless-stopped
 
+  # Frontend (Docker용 - 현재 PM2 사용 중)
   frontend:
     build:
       context: ..
@@ -83,6 +87,6 @@ services:
       - "3030:3030"
     restart: unless-stopped
 
-volumes:
-  postgres_data:
-  redis_data:
+# volumes:
+#   postgres_data:  # Supabase 사용으로 불필요
+#   redis_data:     # Redis 제거로 불필요
