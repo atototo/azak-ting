@@ -55,6 +55,7 @@ class NewsArticle(Base):
     stock_code = Column(String(10), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     notified_at = Column(DateTime, nullable=True)
+    predicted_at = Column(DateTime, nullable=True)
 
     # 멀티 플랫폼 지원 필드
     content_type = Column(
@@ -80,6 +81,7 @@ class NewsArticle(Base):
         Index("idx_news_articles_content_type", "content_type"),
         Index("idx_news_articles_subreddit", "subreddit"),
         Index("idx_news_articles_source_type", "source", "content_type"),
+        Index("idx_news_articles_predicted_at", "predicted_at"),
     )
 
     def __repr__(self) -> str:

@@ -1335,10 +1335,6 @@ class StockPredictor:
 
                 response = client.chat.completions.create(**api_params)
 
-            # 디버깅: 전체 API 응답 구조 로깅
-            logger.info(f"🔍 API 응답 구조 ({model_name}): choices={len(response.choices)}, model={response.model}")
-            logger.info(f"🔍 Message 객체 ({model_name}): {response.choices[0].message}")
-
             # 응답 파싱 - content 또는 reasoning에서 가져오기
             message = response.choices[0].message
             result_text = message.content
@@ -1346,11 +1342,7 @@ class StockPredictor:
             # content가 비어있으면 reasoning 필드 확인 (o1, o3, gpt-5-mini 등)
             if not result_text and hasattr(message, 'reasoning') and message.reasoning:
                 result_text = message.reasoning
-                logger.info(f"💡 content 비어있음, reasoning 필드 사용 (model_type={model_type})")
-
-            # 디버깅: 실제 응답 로깅 (길이 포함)
-            logger.info(f"🔍 LLM 응답 길이 ({model_name}): {len(result_text) if result_text else 0} chars")
-            logger.info(f"🔍 LLM 응답 내용 ({model_name}): {repr(result_text[:500] if result_text else '')}")
+                logger.debug(f"content 비어있음, reasoning 필드 사용 (model_type={model_type})")
 
             # JSON 추출 (reasoning 모델과 일반 모델 모두 처리)
             import re
@@ -1360,7 +1352,6 @@ class StockPredictor:
                 json_match = re.search(r'```json\s*(\{.*?\})\s*```', result_text, re.DOTALL)
                 if json_match:
                     result_text = json_match.group(1)
-                    logger.info(f"✅ JSON 블록 (```json) 추출 성공")
 
             # 2. reasoning 모델의 경우 마지막 {...} JSON 객체 추출 시도
             elif is_reasoning_model and '{' in result_text:
@@ -1373,9 +1364,8 @@ class StockPredictor:
                         # JSON 유효성 검증
                         json.loads(json_candidate)
                         result_text = json_candidate
-                        logger.info(f"✅ Reasoning 모델: 마지막 JSON 객체 추출 성공")
                     except json.JSONDecodeError:
-                        logger.warning(f"⚠️ Reasoning 모델: 마지막 JSON 객체 파싱 실패, 전체 텍스트로 시도")
+                        logger.debug(f"Reasoning 모델: 마지막 JSON 객체 파싱 실패, 전체 텍스트로 시도")
 
             result = json.loads(result_text)
 
@@ -1400,10 +1390,15 @@ class StockPredictor:
                     "avg_5d": None,
                 }
 
+            # 성공 로그 (간결)
+            sentiment = result.get("sentiment_direction", "neutral")
+            impact = result.get("impact_level", "unknown")
+            logger.info(f"✅ {model_name} 예측 완료: {sentiment} (영향도: {impact})")
+
             return result
 
         except Exception as e:
-            logger.error(f"모델 {model_name} 예측 실패: {e}")
+            logger.error(f"❌ {model_name} 예측 실패: {e}")
             return {
                 "prediction": "유지",
                 "confidence": 0,
@@ -1504,7 +1499,7 @@ class StockPredictor:
         news_id: int,
     ) -> Dict[int, Dict[str, Any]]:
         """
-        모든 활성 모델로 예측을 생성하고 DB에 저장합니다.
+        모든 활성 모델로 예측을 생성하고 DB에 저장합니다. (병렬 처리)
 
         Args:
             current_news: 현재 뉴스 정보
@@ -1514,19 +1509,24 @@ class StockPredictor:
         Returns:
             {model_id: prediction_result, ...}
         """
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+
         stock_code = current_news.get("stock_code")
         similar_count = len(similar_news)
-        results = {}
 
         # 프롬프트 생성 (공통)
         prompt = self._build_prompt(current_news, similar_news)
 
-        logger.info(f"🔬 모든 활성 모델로 예측 시작: news_id={news_id}, models={len(self.active_models)}")
+        logger.info(f"🔬 모든 활성 모델로 병렬 예측 시작: news_id={news_id}, models={len(self.active_models)}")
 
-        for model_id, model_info in self.active_models.items():
-            logger.info(f"  📊 {model_info['name']} 예측 중...")
+        # 모든 모델 예측 시작 로그
+        for model_info in self.active_models.values():
+            logger.info(f"📊 {model_info['name']} 예측 중...")
 
-            # 예측 실행
+        # 병렬 실행 함수
+        def predict_one_model(model_id: int, model_info: Dict[str, Any]) -> tuple:
+            """단일 모델 예측 (스레드풀에서 실행)"""
             prediction = self._predict_with_model(
                 model_info["client"],
                 model_info["model_identifier"],
@@ -1540,12 +1540,29 @@ class StockPredictor:
             prediction["model_id"] = model_id
             prediction["model"] = model_info["name"]
 
-            # DB 저장
-            self._save_model_prediction(news_id, model_id, stock_code, prediction)
+            return model_id, prediction
 
-            results[model_id] = prediction
+        # ThreadPoolExecutor로 병렬 실행
+        with ThreadPoolExecutor(max_workers=len(self.active_models)) as executor:
+            futures = [
+                executor.submit(predict_one_model, model_id, model_info)
+                for model_id, model_info in self.active_models.items()
+            ]
 
-        logger.info(f"✅ 모든 모델 예측 완료: {len(results)}개")
+            # 모든 결과 수집
+            results = {}
+            for future in futures:
+                try:
+                    model_id, prediction = future.result()
+
+                    # DB 저장
+                    self._save_model_prediction(news_id, model_id, stock_code, prediction)
+
+                    results[model_id] = prediction
+                except Exception as e:
+                    logger.error(f"❌ 모델 예측 실패: {e}")
+
+        logger.info(f"✅ 전체 {len(results)}개 모델 병렬 예측 완료")
         return results
 
     def get_ab_predictions(self, news_id: int) -> Dict[str, Any]:

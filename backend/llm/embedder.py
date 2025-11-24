@@ -29,6 +29,9 @@ class NewsEmbedder:
 
     def __init__(self):
         """임베더 초기화 - 모델은 싱글톤 패턴으로 한 번만 로드"""
+        # HuggingFace tokenizer fork 경고 방지
+        os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
         self.model_name = settings.EMBEDDING_MODEL_NAME
         self.embedding_dim = 768  # KoSimCSE-roberta의 차원
         self._tokenizer = None
@@ -37,23 +40,27 @@ class NewsEmbedder:
 
     @property
     def tokenizer(self):
-        """토크나이저 lazy loading"""
+        """토크나이저 lazy loading (Thread-safe)"""
         if self._tokenizer is None:
-            logger.info(f"토크나이저 로드 중: {self.model_name}")
-            self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-            logger.info("토크나이저 로드 완료")
+            with self._inference_lock:
+                if self._tokenizer is None:
+                    logger.info(f"토크나이저 로드 중: {self.model_name}")
+                    self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+                    logger.info("토크나이저 로드 완료")
         return self._tokenizer
 
     @property
     def model(self):
-        """모델 lazy loading"""
+        """모델 lazy loading (Thread-safe)"""
         if self._model is None:
-            logger.info(f"임베딩 모델 로드 중: {self.model_name}")
-            start = time.time()
-            self._model = AutoModel.from_pretrained(self.model_name)
-            self._model.eval()  # 평가 모드로 설정
-            load_time = time.time() - start
-            logger.info(f"임베딩 모델 로드 완료 ({load_time:.2f}초)")
+            with self._inference_lock:
+                if self._model is None:
+                    logger.info(f"임베딩 모델 로드 중: {self.model_name}")
+                    start = time.time()
+                    self._model = AutoModel.from_pretrained(self.model_name)
+                    self._model.eval()  # 평가 모드로 설정
+                    load_time = time.time() - start
+                    logger.info(f"임베딩 모델 로드 완료 ({load_time:.2f}초)")
         return self._model
 
     def _mean_pooling(self, model_output, attention_mask):

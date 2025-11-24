@@ -34,18 +34,20 @@ async def process_new_news_notifications(
         처리 통계 {processed, success, failed}
     """
     try:
-        # 최근 N분 이내 저장된 뉴스 조회 (종목 코드가 있는 것만)
-        cutoff_time = datetime.utcnow() - timedelta(minutes=lookback_minutes)
+        # 오늘 0시 이후의 뉴스 조회 (누락 방지)
+        # 15분 lookback 대신 하루 전체를 조회하여 스케줄러 누락 시에도 복구 가능하도록 함
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        cutoff_time = today_start
 
         recent_news = (
             db.query(NewsArticle)
             .filter(
                 NewsArticle.created_at >= cutoff_time,
                 NewsArticle.stock_code.isnot(None),
-                NewsArticle.notified_at.is_(None),  # 아직 알림을 보내지 않은 뉴스만
+                NewsArticle.predicted_at.is_(None),  # 아직 예측을 수행하지 않은 뉴스만
             )
             .order_by(NewsArticle.created_at.desc())
-            .limit(10)  # 최대 10건만 처리
+            .limit(20)  # 병렬 처리로 처리 속도 향상 (20건 -> 30초/건 -> 10분)
             .all()
         )
 
@@ -84,7 +86,8 @@ async def process_new_news_notifications(
                         f"🔕 유사 뉴스 알림 이력 존재 (유사도={similarity:.3f}) "
                         f"→ 알림 skip (뉴스 ID={news.id}, 유사 뉴스 ID={similar_id})"
                     )
-                    # notified_at 업데이트 (알림 skip했지만 처리는 완료)
+                    # notified_at, predicted_at 업데이트 (알림 skip했지만 처리는 완료)
+                    news.predicted_at = datetime.utcnow()
                     news.notified_at = datetime.utcnow()
                     db.commit()
                     skipped_count += 1
@@ -116,25 +119,36 @@ async def process_new_news_notifications(
                 # A/B 설정에 따라 표시할 두 모델 예측 조회
                 prediction = predictor.get_ab_predictions(news_id=news.id)
 
-                # 3. 텔레그램 알림 전송
-                if notifier.send_prediction(
-                    news_title=news.title,
-                    stock_code=news.stock_code,
-                    prediction=prediction,
-                ):
-                    # 알림 전송 성공 시 notified_at 업데이트
-                    news.notified_at = datetime.utcnow()
-                    db.commit()
+                # 예측 완료 시각 기록 (알림 성공 여부와 무관)
+                news.predicted_at = datetime.utcnow()
+                db.commit()
 
-                    success_count += 1
-                    comp = prediction.get("comparison", {})
-                    logger.info(
-                        f"✅ A/B 알림 전송 성공: {news.title[:30]}... "
-                        f"(모델 {len(all_predictions)}개 예측 완료, A/B 일치: {comp.get('agreement')}, 차이: {comp.get('confidence_diff')}%)"
-                    )
-                else:
-                    failed_count += 1
-                    logger.warning(f"⚠️  알림 전송 실패: {news.title[:30]}...")
+                # 3. 텔레그램 알림 전송 (임시 비활성화)
+                # TODO: 텔레그램 알림 재활성화 시 주석 해제
+                # if notifier.send_prediction(
+                #     news_title=news.title,
+                #     stock_code=news.stock_code,
+                #     prediction=prediction,
+                # ):
+                #     # 알림 전송 성공 시 notified_at 업데이트
+                #     news.notified_at = datetime.utcnow()
+                #     db.commit()
+                #
+                #     success_count += 1
+                #     comp = prediction.get("comparison", {})
+                #     logger.info(
+                #         f"✅ A/B 알림 전송 성공: {news.title[:30]}... "
+                #         f"(모델 {len(all_predictions)}개 예측 완료, A/B 일치: {comp.get('agreement')}, 차이: {comp.get('confidence_diff')}%)"
+                #     )
+                # else:
+                #     failed_count += 1
+                #     logger.warning(f"⚠️  알림 전송 실패: {news.title[:30]}...")
+
+                # 알림 전송 없이 예측만 완료
+                success_count += 1
+                logger.info(
+                    f"✅ 예측 완료: {news.title[:30]}... (모델 {len(all_predictions)}개)"
+                )
 
             except Exception as e:
                 failed_count += 1

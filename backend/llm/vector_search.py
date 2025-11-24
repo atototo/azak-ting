@@ -261,7 +261,7 @@ class NewsVectorSearch:
                     "news_id": meta["news_article_id"],
                     "similarity": round(similarity, 4),
                     "stock_code": meta["stock_code"],
-                    "published_at": meta["published_at"],
+                    "published_at": meta.get("published_at"),  # 기존 인덱스 호환성 (None 허용)
                 })
 
                 if len(results) >= top_k:
@@ -338,7 +338,7 @@ class NewsVectorSearch:
                 # 주가 변동률 조회
                 match = (
                     db.query(NewsStockMatch)
-                    .filter(NewsStockMatch.news_article_id == news_id)
+                    .filter(NewsStockMatch.news_id == news_id)
                     .first()
                 )
 
