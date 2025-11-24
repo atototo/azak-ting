@@ -14,6 +14,7 @@ class ContentType(str, Enum):
     REDDIT = "reddit"
     TWITTER = "twitter"
     TELEGRAM = "telegram"
+    DART = "dart"
 
 
 class NewsArticle(Base):

@@ -55,17 +55,21 @@ class NewsSaver:
         소스 식별자에서 콘텐츠 타입을 결정합니다.
 
         Args:
-            source: 소스 식별자 (예: "naver", "reddit:r/stocks")
+            source: 소스 식별자 (예: "naver", "reddit:r/stocks", "DART(금융감독원)")
 
         Returns:
             content_type 문자열 (소문자)
         """
+        source_lower = source.lower()
+
         if source.startswith('reddit:'):
             return 'reddit'
         elif source.startswith('twitter:'):
             return 'twitter'
         elif source.startswith('telegram:'):
             return 'telegram'
+        elif 'dart' in source_lower:
+            return 'dart'
         else:
             return 'news'
 
