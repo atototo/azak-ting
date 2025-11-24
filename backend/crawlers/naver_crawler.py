@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class NaverNewsCrawler(BaseNewsCrawler):
-    """네이버 증권 뉴스 크롤러"""
+    """네이버 증권 뉴스 크롤러 (비동기)"""
 
     # 네이버 증권 뉴스 URL
     BASE_URL = "https://finance.naver.com/news/news_list.naver"
@@ -122,9 +122,9 @@ class NaverNewsCrawler(BaseNewsCrawler):
                         logger.warning(f"날짜 파싱 실패: {date_str}, 현재 시간 사용")
                         return datetime.now()
 
-    def fetch_news(self, limit: int = 10) -> List[NewsArticleData]:
+    async def fetch_news(self, limit: int = 10) -> List[NewsArticleData]:
         """
-        네이버 증권 뉴스를 크롤링합니다.
+        네이버 증권 뉴스를 크롤링합니다 (비동기).
 
         Args:
             limit: 가져올 뉴스 개수
@@ -138,9 +138,9 @@ class NaverNewsCrawler(BaseNewsCrawler):
         logger.info(f"네이버 뉴스 크롤링 시작 (limit={limit})")
 
         while len(news_list) < limit:
-            # 페이지 HTML 가져오기
+            # 페이지 HTML 가져오기 (비동기)
             url = self._get_news_list_url(page)
-            html = self.fetch_html(url)
+            html = await self.fetch_html(url)
 
             if not html:
                 logger.warning(f"페이지 {page} 가져오기 실패")

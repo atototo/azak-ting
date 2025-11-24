@@ -1,14 +1,15 @@
 """
 Reddit 크롤러 구현
 
-PRAW (Python Reddit API Wrapper)를 사용하여 Reddit 게시글을 수집합니다.
+asyncpraw (Async Python Reddit API Wrapper)를 사용하여 Reddit 게시글을 수집합니다.
 """
+import asyncio
 import logging
 from typing import List, Optional
 from datetime import datetime, timedelta
 
-import praw
-from praw.models import Submission
+import asyncpraw
+from asyncpraw.models import Submission
 
 from backend.crawlers.base_crawler import BaseNewsCrawler, NewsArticleData
 from backend.config import settings
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class RedditCrawler(BaseNewsCrawler):
-    """Reddit 크롤러 클래스"""
+    """Reddit 크롤러 클래스 (비동기)"""
 
     def __init__(
         self,
@@ -43,8 +44,8 @@ class RedditCrawler(BaseNewsCrawler):
             rate_limit_seconds=2.0,  # Reddit API rate limit
         )
 
-        # Reddit API 초기화
-        self.reddit = praw.Reddit(
+        # Reddit API 초기화 (비동기)
+        self.reddit = asyncpraw.Reddit(
             client_id=settings.REDDIT_CLIENT_ID,
             client_secret=settings.REDDIT_CLIENT_SECRET,
             user_agent=settings.REDDIT_USER_AGENT,
@@ -100,7 +101,7 @@ class RedditCrawler(BaseNewsCrawler):
 
         return False
 
-    def _submission_to_news_data(self, submission: Submission) -> NewsArticleData:
+    async def _submission_to_news_data(self, submission: Submission) -> NewsArticleData:
         """
         Reddit 게시글을 NewsArticleData로 변환합니다.
 
@@ -149,9 +150,9 @@ class RedditCrawler(BaseNewsCrawler):
             metadata=metadata,
         )
 
-    def fetch_news(self, limit: int = 100) -> List[NewsArticleData]:
+    async def fetch_news(self, limit: int = 100) -> List[NewsArticleData]:
         """
-        Reddit 게시글을 크롤링합니다.
+        Reddit 게시글을 크롤링합니다 (비동기).
 
         Args:
             limit: subreddit당 가져올 최대 게시글 수
@@ -165,17 +166,18 @@ class RedditCrawler(BaseNewsCrawler):
             try:
                 logger.info(f"r/{subreddit_name} 크롤링 시작...")
 
-                subreddit = self.reddit.subreddit(subreddit_name)
+                subreddit = await self.reddit.subreddit(subreddit_name)
 
                 # 최근 게시글 수집 (hot, new 조합)
-                submissions = list(subreddit.hot(limit=limit // 2)) + \
-                             list(subreddit.new(limit=limit // 2))
+                hot_submissions = [s async for s in subreddit.hot(limit=limit // 2)]
+                new_submissions = [s async for s in subreddit.new(limit=limit // 2)]
+                submissions = hot_submissions + new_submissions
 
                 relevant_count = 0
 
                 for submission in submissions:
-                    # Rate limiting 적용
-                    self._apply_rate_limit()
+                    # Rate limiting 적용 (비동기)
+                    await self._apply_rate_limit()
 
                     # 관련성 검사
                     if not self._is_relevant(submission):
@@ -183,7 +185,7 @@ class RedditCrawler(BaseNewsCrawler):
 
                     # NewsArticleData로 변환
                     try:
-                        news_data = self._submission_to_news_data(submission)
+                        news_data = await self._submission_to_news_data(submission)
                         all_news.append(news_data)
                         relevant_count += 1
 
@@ -208,22 +210,30 @@ class RedditCrawler(BaseNewsCrawler):
         logger.info(f"Reddit 크롤링 총 {len(all_news)}개 게시글 수집")
         return all_news
 
+    async def close(self) -> None:
+        """Reddit 클라이언트와 HTTP 클라이언트를 닫습니다."""
+        await self.reddit.close()
+        await super().close()
+
 
 if __name__ == "__main__":
     """테스트 실행"""
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
+    async def main():
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
 
-    crawler = RedditCrawler()
-    news_list = crawler.fetch_news(limit=50)
+        async with RedditCrawler() as crawler:
+            news_list = await crawler.fetch_news(limit=50)
 
-    print(f"\n총 {len(news_list)}개 게시글 수집:")
-    for news in news_list[:5]:  # 처음 5개만 출력
-        print(f"\n제목: {news.title}")
-        print(f"소스: {news.source}")
-        print(f"작성자: {news.author}")
-        print(f"URL: {news.url}")
-        print(f"Upvotes: {news.metadata.get('upvotes')}")
-        print(f"Comments: {news.metadata.get('num_comments')}")
+            print(f"\n총 {len(news_list)}개 게시글 수집:")
+            for news in news_list[:5]:  # 처음 5개만 출력
+                print(f"\n제목: {news.title}")
+                print(f"소스: {news.source}")
+                print(f"작성자: {news.author}")
+                print(f"URL: {news.url}")
+                print(f"Upvotes: {news.metadata.get('upvotes')}")
+                print(f"Comments: {news.metadata.get('num_comments')}")
+
+    asyncio.run(main())

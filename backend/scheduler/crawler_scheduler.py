@@ -7,7 +7,7 @@ import logging
 import asyncio
 from typing import Optional
 
-from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
 
@@ -51,7 +51,7 @@ class CrawlerScheduler:
         """
         self.news_interval_minutes = news_interval_minutes
         self.stock_interval_minutes = stock_interval_minutes
-        self.scheduler: Optional[BackgroundScheduler] = None
+        self.scheduler: Optional[AsyncIOScheduler] = None
         self.is_running = False
 
         # 뉴스 크롤링 통계
@@ -76,7 +76,7 @@ class CrawlerScheduler:
         self.embedding_total_success = 0
         self.embedding_total_fail = 0
 
-        # 자동 알림 통계
+        # AI 시장 분석 자동 생성 통계 (매 10분마다 실행)
         self.notify_total_runs = 0
         self.notify_total_processed = 0
         self.notify_total_success = 0
@@ -100,16 +100,16 @@ class CrawlerScheduler:
         self.kis_minute_total_saved = 0
         self.kis_minute_total_errors = 0
 
-    def _crawl_all_sources(self) -> None:
+    async def _crawl_all_sources(self) -> None:
         """
-        모든 언론사에서 뉴스를 크롤링하고 저장합니다.
+        모든 언론사에서 뉴스를 크롤링하고 저장합니다 (비동기).
         """
         logger.info("=" * 40)
         logger.info(f"🔄 뉴스 크롤링 시작 (#{self.news_total_crawls + 1})")
         logger.info("=" * 40)
 
         db = SessionLocal()
-        saver = NewsSaver(db)
+        saver = NewsSaver(db, auto_predict=False)  # 뉴스 저장 시 자동 예측 비활성화 (PyTorch Segmentation Fault 방지)
 
         saved_total = 0
         skipped_total = 0
@@ -118,10 +118,10 @@ class CrawlerScheduler:
             # 1. 네이버 뉴스 크롤링
             try:
                 logger.info("📰 네이버 뉴스 크롤링...")
-                with NaverNewsCrawler() as naver:
-                    news_list = naver.fetch_news(limit=10)
+                async with NaverNewsCrawler() as naver:
+                    news_list = await naver.fetch_news(limit=10)
                     if news_list:
-                        saved, skipped = asyncio.run(saver.save_news_batch(news_list))
+                        saved, skipped = await saver.save_news_batch(news_list)
                         saved_total += saved
                         skipped_total += skipped
                         logger.info(f"   ✅ 네이버: {saved}건 저장, {skipped}건 스킵")
@@ -134,10 +134,10 @@ class CrawlerScheduler:
             # 2. 한국경제 뉴스 크롤링
             try:
                 logger.info("📰 한국경제 뉴스 크롤링...")
-                with HankyungNewsCrawler() as hankyung:
-                    news_list = hankyung.fetch_news(limit=10)
+                async with HankyungNewsCrawler() as hankyung:
+                    news_list = await hankyung.fetch_news(limit=10)
                     if news_list:
-                        saved, skipped = asyncio.run(saver.save_news_batch(news_list))
+                        saved, skipped = await saver.save_news_batch(news_list)
                         saved_total += saved
                         skipped_total += skipped
                         logger.info(f"   ✅ 한국경제: {saved}건 저장, {skipped}건 스킵")
@@ -150,10 +150,10 @@ class CrawlerScheduler:
             # 3. 매일경제 뉴스 크롤링
             try:
                 logger.info("📰 매일경제 뉴스 크롤링...")
-                with MaeilNewsCrawler() as maeil:
-                    news_list = maeil.fetch_news(limit=10)
+                async with MaeilNewsCrawler() as maeil:
+                    news_list = await maeil.fetch_news(limit=10)
                     if news_list:
-                        saved, skipped = asyncio.run(saver.save_news_batch(news_list))
+                        saved, skipped = await saver.save_news_batch(news_list)
                         saved_total += saved
                         skipped_total += skipped
                         logger.info(f"   ✅ 매일경제: {saved}건 저장, {skipped}건 스킵")
@@ -167,10 +167,10 @@ class CrawlerScheduler:
             try:
                 logger.info("📰 Reddit 크롤링...")
                 from backend.crawlers.reddit_crawler import RedditCrawler
-                with RedditCrawler() as reddit:
-                    news_list = reddit.fetch_news(limit=50)
+                async with RedditCrawler() as reddit:
+                    news_list = await reddit.fetch_news(limit=50)
                     if news_list:
-                        saved, skipped = asyncio.run(saver.save_news_batch(news_list))
+                        saved, skipped = await saver.save_news_batch(news_list)
                         saved_total += saved
                         skipped_total += skipped
                         logger.info(f"   ✅ Reddit: {saved}건 저장, {skipped}건 스킵")
@@ -210,9 +210,9 @@ class CrawlerScheduler:
         finally:
             db.close()
 
-    def _crawl_stock_specific_news(self) -> None:
+    async def _crawl_stock_specific_news(self) -> None:
         """
-        종목별로 뉴스를 검색하여 수집합니다.
+        종목별로 뉴스를 검색하여 수집합니다 (비동기).
         우선순위에 따라 수집량 차등 적용.
         """
         logger.info("=" * 40)
@@ -220,58 +220,58 @@ class CrawlerScheduler:
         logger.info("=" * 40)
 
         db = SessionLocal()
-        saver = NewsSaver(db)
-        search_crawler = NaverNewsSearchCrawler()
+        saver = NewsSaver(db, auto_predict=False)  # 뉴스 저장 시 자동 예측 비활성화 (PyTorch Segmentation Fault 방지)
 
         saved_total = 0
         skipped_total = 0
 
         try:
-            # DB에서 활성화된 종목 가져오기
-            stocks = db.query(Stock).filter(Stock.is_active == True).order_by(Stock.priority).all()
+            async with NaverNewsSearchCrawler() as search_crawler:
+                # DB에서 활성화된 종목 가져오기
+                stocks = db.query(Stock).filter(Stock.is_active == True).order_by(Stock.priority).all()
 
-            logger.info(f"📊 검색 대상 종목: {len(stocks)}개")
+                logger.info(f"📊 검색 대상 종목: {len(stocks)}개")
 
-            for stock in stocks:
-                try:
-                    # 우선순위별 수집량 결정
-                    if stock.priority <= 2:
-                        limit = 10  # 높은 우선순위
-                    elif stock.priority == 3:
-                        limit = 5   # 중간 우선순위
-                    else:
-                        limit = 3   # 낮은 우선순위
-
-                    logger.info(f"🔍 {stock.name} ({stock.code}) 검색 중... (최대 {limit}건)")
-
-                    # 종목명으로 뉴스 검색
-                    # NAVER는 한글로 검색 (영문 "NAVER"로 검색하면 출처 "네이버"가 모두 검색됨)
-                    search_query = "네이버" if stock.name == "NAVER" else stock.name
-
-                    news_list = search_crawler.search_news(
-                        query=search_query,
-                        limit=limit
-                    )
-
-                    if news_list:
-                        # 뉴스에 종목코드 명시적 설정
-                        for news in news_list:
-                            news.company_name = stock.name
-                            # stock_code는 news_saver에서 자동 매칭되지만 명시적으로 설정 가능
-
-                        saved, skipped = asyncio.run(saver.save_news_batch(news_list))
-                        saved_total += saved
-                        skipped_total += skipped
-
-                        if saved > 0:
-                            logger.info(f"   ✅ {saved}건 저장, {skipped}건 스킵")
+                for stock in stocks:
+                    try:
+                        # 우선순위별 수집량 결정
+                        if stock.priority <= 2:
+                            limit = 10  # 높은 우선순위
+                        elif stock.priority == 3:
+                            limit = 5   # 중간 우선순위
                         else:
-                            logger.debug(f"   ⏭️  전부 중복 ({skipped}건)")
-                    else:
-                        logger.debug(f"   ℹ️  검색 결과 없음")
+                            limit = 3   # 낮은 우선순위
 
-                except Exception as e:
-                    logger.error(f"   ❌ {stock.name} 검색 실패: {e}")
+                        logger.info(f"🔍 {stock.name} ({stock.code}) 검색 중... (최대 {limit}건)")
+
+                        # 종목명으로 뉴스 검색
+                        # NAVER는 한글로 검색 (영문 "NAVER"로 검색하면 출처 "네이버"가 모두 검색됨)
+                        search_query = "네이버" if stock.name == "NAVER" else stock.name
+
+                        news_list = await search_crawler.search_news(
+                            query=search_query,
+                            limit=limit
+                        )
+
+                        if news_list:
+                            # 뉴스에 종목코드 명시적 설정
+                            for news in news_list:
+                                news.company_name = stock.name
+                                # stock_code는 news_saver에서 자동 매칭되지만 명시적으로 설정 가능
+
+                            saved, skipped = await saver.save_news_batch(news_list)
+                            saved_total += saved
+                            skipped_total += skipped
+
+                            if saved > 0:
+                                logger.info(f"   ✅ {saved}건 저장, {skipped}건 스킵")
+                            else:
+                                logger.debug(f"   ⏭️  전부 중복 ({skipped}건)")
+                        else:
+                            logger.debug(f"   ℹ️  검색 결과 없음")
+
+                    except Exception as e:
+                        logger.error(f"   ❌ {stock.name} 검색 실패: {e}")
 
             logger.info("=" * 40)
             logger.info(f"✅ 종목별 검색 완료: {saved_total}건 저장, {skipped_total}건 스킵")
@@ -283,9 +283,9 @@ class CrawlerScheduler:
         finally:
             db.close()
 
-    def _crawl_dart_disclosures(self) -> None:
+    async def _crawl_dart_disclosures(self) -> None:
         """
-        DART 공시 정보를 수집합니다.
+        DART 공시 정보를 수집합니다 (비동기).
         Priority 1-2 종목만 대상 (중요 종목만)
         """
         logger.info("=" * 40)
@@ -293,58 +293,57 @@ class CrawlerScheduler:
         logger.info("=" * 40)
 
         db = SessionLocal()
-        saver = NewsSaver(db)
-        dart_crawler = DartCrawler()
-
-        # DART API 키가 없으면 스킵
-        if not dart_crawler.api_key:
-            logger.warning("⚠️  DART API 키가 없어 공시 수집을 건너뜁니다")
-            logger.info("   API 키 발급: https://opendart.fss.or.kr/")
-            db.close()
-            return
+        saver = NewsSaver(db, auto_predict=False)  # 뉴스 저장 시 자동 예측 비활성화 (PyTorch Segmentation Fault 방지)
 
         saved_total = 0
         skipped_total = 0
 
         try:
-            # Priority 1-2 종목만 공시 수집 (중요 종목)
-            stocks = db.query(Stock).filter(
-                Stock.is_active == True,
-                Stock.priority <= 2
-            ).all()
+            async with DartCrawler() as dart_crawler:
+                # DART API 키가 없으면 스킵
+                if not dart_crawler.api_key:
+                    logger.warning("⚠️  DART API 키가 없어 공시 수집을 건너뜁니다")
+                    logger.info("   API 키 발급: https://opendart.fss.or.kr/")
+                    return
 
-            logger.info(f"📊 공시 수집 대상: {len(stocks)}개 (Priority 1-2만)")
+                # Priority 1-2 종목만 공시 수집 (중요 종목)
+                stocks = db.query(Stock).filter(
+                    Stock.is_active == True,
+                    Stock.priority <= 2
+                ).all()
 
-            for stock in stocks:
-                try:
-                    logger.info(f"📋 {stock.name} ({stock.code}) 공시 검색 중...")
+                logger.info(f"📊 공시 수집 대상: {len(stocks)}개 (Priority 1-2만)")
 
-                    # 최근 3일간 공시 검색
-                    from datetime import datetime, timedelta
-                    disclosures = dart_crawler.fetch_disclosures_by_stock_code(
-                        stock_code=stock.code,
-                        start_date=datetime.now() - timedelta(days=3),
-                        end_date=datetime.now(),
-                    )
+                for stock in stocks:
+                    try:
+                        logger.info(f"📋 {stock.name} ({stock.code}) 공시 검색 중...")
 
-                    if disclosures:
-                        # 공시에 종목 정보 설정
-                        for disclosure in disclosures:
-                            disclosure.company_name = stock.name
+                        # 최근 3일간 공시 검색
+                        from datetime import datetime, timedelta
+                        disclosures = await dart_crawler.fetch_disclosures_by_stock_code(
+                            stock_code=stock.code,
+                            start_date=datetime.now() - timedelta(days=3),
+                            end_date=datetime.now(),
+                        )
 
-                        saved, skipped = asyncio.run(saver.save_news_batch(disclosures))
-                        saved_total += saved
-                        skipped_total += skipped
+                        if disclosures:
+                            # 공시에 종목 정보 설정
+                            for disclosure in disclosures:
+                                disclosure.company_name = stock.name
 
-                        if saved > 0:
-                            logger.info(f"   ✅ {saved}건 저장, {skipped}건 스킵")
+                            saved, skipped = await saver.save_news_batch(disclosures)
+                            saved_total += saved
+                            skipped_total += skipped
+
+                            if saved > 0:
+                                logger.info(f"   ✅ {saved}건 저장, {skipped}건 스킵")
+                            else:
+                                logger.debug(f"   ⏭️  전부 중복 ({skipped}건)")
                         else:
-                            logger.debug(f"   ⏭️  전부 중복 ({skipped}건)")
-                    else:
-                        logger.debug(f"   ℹ️  공시 없음")
+                            logger.debug(f"   ℹ️  공시 없음")
 
-                except Exception as e:
-                    logger.error(f"   ❌ {stock.name} 공시 수집 실패: {e}")
+                    except Exception as e:
+                        logger.error(f"   ❌ {stock.name} 공시 수집 실패: {e}")
 
             logger.info("=" * 40)
             logger.info(f"✅ DART 공시 수집 완료: {saved_total}건 저장, {skipped_total}건 스킵")
@@ -362,7 +361,7 @@ class CrawlerScheduler:
     def _match_news_with_stocks(self) -> None:
         """
         뉴스-주가 매칭 작업을 실행합니다.
-        매일 장 마감 후(15:40)에 실행됩니다.
+        매일 장 마감 후(15:50, KIS 일봉 수집 후 10분)에 실행됩니다.
         """
         logger.info("=" * 40)
         logger.info(f"🔗 뉴스-주가 매칭 시작 (#{self.matching_total_runs + 1})")
@@ -404,7 +403,7 @@ class CrawlerScheduler:
     def _embed_news(self) -> None:
         """
         뉴스 임베딩 작업을 실행합니다.
-        매일 장 마감 후(16:00)에 실행됩니다.
+        매일 장 마감 후(16:10, 투자자별 매매동향 수집 후 10분)에 실행됩니다.
         """
         logger.info("=" * 40)
         logger.info(f"🔤 뉴스 임베딩 시작 (#{self.embedding_total_runs + 1})")
@@ -440,20 +439,24 @@ class CrawlerScheduler:
         except Exception as e:
             logger.error(f"❌ 뉴스 임베딩 중 예상치 못한 에러: {e}")
 
-    def _auto_notify(self) -> None:
+    async def _auto_notify(self) -> None:
         """
-        최근 뉴스에 대해 자동으로 예측을 수행하고 텔레그램 알림을 전송합니다.
-        뉴스 크롤링 직후에 실행됩니다.
+        AI 시장 분석 자동 생성 및 알림
+
+        최근 뉴스에 대해 AI 예측을 수행하여 시장 분석을 생성하고,
+        텔레그램으로 알림을 전송합니다.
+
+        실행 주기: 10분마다 (뉴스 크롤링과 동일)
         """
         logger.info("=" * 40)
-        logger.info(f"🔔 자동 알림 시작 (#{self.notify_total_runs + 1})")
+        logger.info(f"🔔 AI 시장 분석 자동 생성 시작 (#{self.notify_total_runs + 1})")
         logger.info("=" * 40)
 
         db = SessionLocal()
 
         try:
             # 최근 15분 이내 뉴스 처리
-            stats = process_new_news_notifications(db, lookback_minutes=15)
+            stats = await process_new_news_notifications(db, lookback_minutes=15)
 
             # 통계 업데이트
             self.notify_total_runs += 1
@@ -471,11 +474,11 @@ class CrawlerScheduler:
 
             logger.info("=" * 40)
             logger.info(
-                f"✅ 자동 알림 완료: 처리 {stats['processed']}건, "
+                f"✅ AI 시장 분석 완료: 처리 {stats['processed']}건, "
                 f"성공 {stats['success']}건, 실패 {stats['failed']}건"
             )
             logger.info(
-                f"📊 알림 전체 통계: 실행 {self.notify_total_runs}회, "
+                f"📊 AI 분석 전체 통계: 실행 {self.notify_total_runs}회, "
                 f"처리 {self.notify_total_processed}건, "
                 f"성공 {self.notify_total_success}건, "
                 f"실패 {self.notify_total_failed}건, "
@@ -484,7 +487,7 @@ class CrawlerScheduler:
             logger.info("=" * 40)
 
         except Exception as e:
-            logger.error(f"❌ 자동 알림 중 예상치 못한 에러: {e}")
+            logger.error(f"❌ AI 시장 분석 중 예상치 못한 에러: {e}")
 
         finally:
             db.close()
@@ -671,7 +674,7 @@ class CrawlerScheduler:
     async def _generate_stock_reports(self) -> None:
         """
         종목별 투자 리포트 생성.
-        하루 3번 실행됩니다 (09:15, 13:00, 15:40).
+        하루 3번 실행됩니다 (08:30 장시작 전, 13:05 장중, 16:00 장마감 후).
         모든 활성 종목 대상.
         """
         logger.info("=" * 40)
@@ -731,7 +734,7 @@ class CrawlerScheduler:
     def _generate_model_evaluations(self) -> None:
         """
         최근 투자 리포트에 대한 모델 평가 생성.
-        매일 16:30에 실행됩니다 (리포트 생성 후).
+        매일 16:30에 실행됩니다 (장마감 리포트 생성 후 30분).
         Priority 1-2 종목만 대상.
         """
         logger.info("=" * 40)
@@ -883,10 +886,10 @@ class CrawlerScheduler:
             f"(뉴스: {self.news_interval_minutes}분, 주가: {self.stock_interval_minutes}분)"
         )
 
-        self.scheduler = BackgroundScheduler()
+        self.scheduler = AsyncIOScheduler(timezone="Asia/Seoul")
 
-        # 뉴스 크롤링 작업 등록 (10분 간격)
-        news_trigger = IntervalTrigger(minutes=self.news_interval_minutes)
+        # 뉴스 크롤링 작업 등록 (매시 0, 10, 20, 30, 40, 50분 - AI 분석과 겹치지 않도록 CronTrigger 사용)
+        news_trigger = CronTrigger(minute="0,10,20,30,40,50")
         self.scheduler.add_job(
             func=self._crawl_all_sources,
             trigger=news_trigger,
@@ -895,8 +898,8 @@ class CrawlerScheduler:
             replace_existing=True,
         )
 
-        # 종목별 검색 작업 등록 (10분 간격)
-        stock_news_trigger = IntervalTrigger(minutes=self.news_interval_minutes)
+        # 종목별 검색 작업 등록 (매시 0, 10, 20, 30, 40, 50분 - 뉴스 크롤링과 동시 실행)
+        stock_news_trigger = CronTrigger(minute="0,10,20,30,40,50")
         self.scheduler.add_job(
             func=self._crawl_stock_specific_news,
             trigger=stock_news_trigger,
@@ -917,8 +920,8 @@ class CrawlerScheduler:
 
         # FDR 주가 수집 제거 - KIS API로 전환 완료
 
-        # 뉴스-주가 매칭 작업 등록 (매일 15:40)
-        matching_trigger = CronTrigger(hour=15, minute=40)
+        # 뉴스-주가 매칭 작업 등록 (매일 15:50 - KIS 일봉 수집 후 10분)
+        matching_trigger = CronTrigger(hour=15, minute=50)
         self.scheduler.add_job(
             func=self._match_news_with_stocks,
             trigger=matching_trigger,
@@ -927,8 +930,8 @@ class CrawlerScheduler:
             replace_existing=True,
         )
 
-        # 뉴스 임베딩 작업 등록 (매일 16:00)
-        embedding_trigger = CronTrigger(hour=16, minute=0)
+        # 뉴스 임베딩 작업 등록 (매일 16:10 - 투자자별 매매동향 수집 후 10분)
+        embedding_trigger = CronTrigger(hour=16, minute=10)
         self.scheduler.add_job(
             func=self._embed_news,
             trigger=embedding_trigger,
@@ -937,20 +940,22 @@ class CrawlerScheduler:
             replace_existing=True,
         )
 
-        # 자동 알림 작업 등록 (뉴스 크롤링과 동일한 주기)
-        notify_trigger = IntervalTrigger(minutes=self.news_interval_minutes)
+        # AI 시장 분석 자동 생성 작업 등록 (매시 5, 15, 25, 35, 45, 55분 - 뉴스 크롤링과 5분 간격 분리)
+        # 최근 뉴스에 대해 AI 예측을 수행하여 시장 분석을 자동 생성하고 텔레그램 알림 전송
+        # CronTrigger 사용으로 뉴스 크롤링(0, 10, 20, 30, 40, 50분)과 절대 겹치지 않음 (PyTorch Segmentation Fault 방지)
+        notify_trigger = CronTrigger(minute="5,15,25,35,45,55")
         self.scheduler.add_job(
             func=self._auto_notify,
             trigger=notify_trigger,
             id="auto_notify_job",
-            name="자동 알림",
+            name="AI 시장 분석 자동 생성",
             replace_existing=True,
         )
 
         # KIS 업종/지수 일자별 수집 작업 등록 (매일 18:00 - 시간외 거래 마감 후)
         index_daily_trigger = CronTrigger(hour=18, minute=0)
         self.scheduler.add_job(
-            func=lambda: asyncio.run(self._collect_index_daily()),
+            func=self._collect_index_daily,
             trigger=index_daily_trigger,
             id="kis_index_daily_job",
             name="KIS 업종/지수 일자별 수집기",
@@ -960,27 +965,27 @@ class CrawlerScheduler:
         # KIS 일봉 수집 작업 등록 (매일 15:40 - 장 마감 후)
         kis_daily_trigger = CronTrigger(hour=15, minute=40)
         self.scheduler.add_job(
-            func=lambda: asyncio.run(self._collect_kis_daily_prices()),
+            func=self._collect_kis_daily_prices,
             trigger=kis_daily_trigger,
             id="kis_daily_collector_job",
             name="KIS 일봉 수집기",
             replace_existing=True,
         )
 
-        # KIS 1분봉 수집 작업 등록 (매 1분 - 장 시간만)
-        kis_minute_trigger = IntervalTrigger(minutes=1)
-        self.scheduler.add_job(
-            func=lambda: asyncio.run(self._collect_kis_minute_prices()),
-            trigger=kis_minute_trigger,
-            id="kis_minute_collector_job",
-            name="KIS 1분봉 수집기",
-            replace_existing=True,
-        )
+        # KIS 1분봉 수집 작업 등록 (비활성화 - 사용되지 않음)
+        # kis_minute_trigger = IntervalTrigger(minutes=1)
+        # self.scheduler.add_job(
+        #     func=self._collect_kis_minute_prices,
+        #     trigger=kis_minute_trigger,
+        #     id="kis_minute_collector_job",
+        #     name="KIS 1분봉 수집기",
+        #     replace_existing=True,
+        # )
 
         # KIS 시장 데이터 수집 작업 등록 (매 5분 - 장 시간만)
         market_data_trigger = IntervalTrigger(minutes=5)
         self.scheduler.add_job(
-            func=lambda: asyncio.run(self._collect_market_data()),
+            func=self._collect_market_data,
             trigger=market_data_trigger,
             id="kis_market_data_job",
             name="KIS 시장 데이터 수집",
@@ -990,48 +995,48 @@ class CrawlerScheduler:
         # 투자자별 매매동향 수집 (매일 16:00 - 장 마감 후)
         investor_trading_trigger = CronTrigger(hour=16, minute=0)
         self.scheduler.add_job(
-            func=lambda: asyncio.run(self._collect_investor_trading()),
+            func=self._collect_investor_trading,
             trigger=investor_trading_trigger,
             id="investor_trading_job",
             name="투자자별 매매동향 수집",
             replace_existing=True,
         )
 
-        # 시간외 거래 가격 수집 (매일 18:00 - 시간외 거래 종료 후)
-        overtime_trigger = CronTrigger(hour=18, minute=0)
+        # 시간외 거래 가격 수집 (매일 18:10 - 업종/지수 수집 후 10분)
+        overtime_trigger = CronTrigger(hour=18, minute=10)
         self.scheduler.add_job(
-            func=lambda: asyncio.run(self._collect_overtime_prices()),
+            func=self._collect_overtime_prices,
             trigger=overtime_trigger,
             id="overtime_price_job",
             name="시간외 거래 가격 수집",
             replace_existing=True,
         )
 
-        # 리포트 생성 (하루 3번 - 장 시작 후, 점심 후, 장 마감 후)
-        # 장 시작 후 (10:00)
-        report_morning_trigger = CronTrigger(hour=10, minute=0)
+        # 리포트 생성 (하루 3번 - 장 시작 전, 점심 후, 장 마감 후)
+        # 장 시작 전 (08:30 - 장 시작 전 투자 의사결정 지원)
+        report_morning_trigger = CronTrigger(hour=8, minute=30)
         self.scheduler.add_job(
-            func=lambda: asyncio.run(self._generate_stock_reports()),
+            func=self._generate_stock_reports,
             trigger=report_morning_trigger,
             id="stock_report_morning_job",
-            name="투자 리포트 생성 (장초)",
+            name="투자 리포트 생성 (장시작 전)",
             replace_existing=True,
         )
 
-        # 점심 시간 후 (13:00)
-        report_lunch_trigger = CronTrigger(hour=13, minute=0)
+        # 점심 시간 후 (13:05 - 오전 시장 데이터 반영)
+        report_lunch_trigger = CronTrigger(hour=13, minute=5)
         self.scheduler.add_job(
-            func=lambda: asyncio.run(self._generate_stock_reports()),
+            func=self._generate_stock_reports,
             trigger=report_lunch_trigger,
             id="stock_report_lunch_job",
             name="투자 리포트 생성 (장중)",
             replace_existing=True,
         )
 
-        # 장 마감 후 (15:45 - KIS 일봉 수집 후 5분)
-        report_close_trigger = CronTrigger(hour=15, minute=45)
+        # 장 마감 후 (16:00 - 일봉, 뉴스-주가 매칭 완료 후)
+        report_close_trigger = CronTrigger(hour=16, minute=0)
         self.scheduler.add_job(
-            func=lambda: asyncio.run(self._generate_stock_reports()),
+            func=self._generate_stock_reports,
             trigger=report_close_trigger,
             id="stock_report_close_job",
             name="투자 리포트 생성 (장마감)",
@@ -1073,31 +1078,26 @@ class CrawlerScheduler:
 
         logger.info("✅ 스케줄러 시작 완료")
         logger.info("⏰ 크롤러들이 스케줄에 따라 자동 실행됩니다")
-        logger.info("   - 최신 뉴스 (네이버/한경/매경/Reddit): 10분마다")
-        logger.info("   - 종목별 검색: 10분마다")
-        logger.info("   - DART 공시: 5분마다")
+        logger.info("   - 최신 뉴스 (네이버/한경/매경/Reddit): 10분마다 (24시간)")
+        logger.info("   - 종목별 검색: 10분마다 (24시간)")
+        logger.info("   - DART 공시: 5분마다 (24시간)")
         logger.info("   - KIS 일봉 수집: 매일 15:40 (장 마감 후)")
-        logger.info("   - 투자 리포트: 매일 10:00 (장초), 13:00 (장중), 15:45 (장마감 - 일봉 수집 후)")
-        logger.info("   - KIS 1분봉 수집: 매 1분 (장 시간만)")
+        logger.info("   - 뉴스-주가 매칭: 매일 15:50 (일봉 수집 후 10분)")
+        logger.info("   - 투자 리포트: 매일 08:30 (장시작 전), 13:05 (장중), 16:00 (장마감)")
+        # logger.info("   - KIS 1분봉 수집: 매 1분 (장 시간만)")  # 비활성화
         logger.info("   - KIS 시장 데이터: 매 5분 (호가, 현재가, 업종지수 - 장 시간만)")
         logger.info("   - 투자자별 매매동향: 매일 16:00 (장 마감 후)")
-        logger.info("   - 종목 기본정보: 매일 16:10 (장 마감 후)")
-        logger.info("   - 모델 평가 생성: 매일 16:30 (리포트 생성 후)")
-        logger.info("   - 시간외 거래 가격: 매일 18:00 (시간외 거래 종료 후)")
+        logger.info("   - 뉴스 임베딩: 매일 16:10 (매매동향 수집 후 10분)")
+        logger.info("   - 모델 평가 생성: 매일 16:30 (리포트 생성 후 30분)")
         logger.info("   - KIS 업종/지수 일자별: 매일 18:00 (시간외 거래 종료 후)")
+        logger.info("   - 시간외 거래 가격: 매일 18:10 (업종/지수 수집 후 10분)")
         logger.info("   - 상품정보 주간 수집: 매주 일요일 01:00")
         logger.info("   - 재무비율 주간 수집: 매주 일요일 02:00")
 
-        # 초기 실행은 선택사항 (환경 변수로 제어)
-        # 첫 스케줄까지 기다리는 것이 서버 시작을 빠르게 합니다
-        import os
-        if os.getenv("RUN_INITIAL_CRAWL", "false").lower() == "true":
-            logger.info("🔄 초기 크롤링 실행...")
-            self._crawl_all_sources()
-            self._crawl_stock_specific_news()
-            self._crawl_dart_disclosures()
-        else:
-            logger.info("⏭️  초기 크롤링 스킵 - 첫 스케줄까지 대기 중...")
+        # 초기 실행 비활성화
+        # AsyncIOScheduler 사용 시 start() 메서드는 동기이므로 async 함수를 직접 호출 불가
+        # 첫 스케줄까지 기다리는 것이 서버 시작을 빠르게 하고 구조적으로 더 간단합니다
+        logger.info("⏭️  초기 크롤링 스킵 - 첫 스케줄까지 대기 중...")
 
     def shutdown(self) -> None:
         """스케줄러를 종료합니다."""

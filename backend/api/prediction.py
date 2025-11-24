@@ -245,10 +245,10 @@ async def predict_stock_price(
         )
 
         # 2. 유사 뉴스 검색
-        vector_search = get_vector_search()
+        vector_search = await get_vector_search()
         news_text = f"{news.title}\n{news.content}"
 
-        similar_news = vector_search.get_news_with_price_changes(
+        similar_news = await vector_search.get_news_with_price_changes(
             news_text=news_text,
             stock_code=stock_code,
             db=db,
@@ -393,10 +393,10 @@ async def get_prediction_by_news_id(
         logger.info(f"예측 조회 요청: news_id={news_id}, stock_code={news.stock_code}")
 
         # 2. 유사 뉴스 검색
-        vector_search = get_vector_search()
+        vector_search = await get_vector_search()
         news_text = f"{news.title}\n{news.content}"
 
-        similar_news = vector_search.get_news_with_price_changes(
+        similar_news = await vector_search.get_news_with_price_changes(
             news_text=news_text,
             stock_code=news.stock_code,
             db=db,

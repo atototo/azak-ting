@@ -19,7 +19,7 @@ from backend.config import settings
 logger = logging.getLogger(__name__)
 
 
-def process_new_news_notifications(
+async def process_new_news_notifications(
     db: Session,
     lookback_minutes: int = 15,
 ) -> dict:
@@ -57,7 +57,7 @@ def process_new_news_notifications(
             f"🔔 자동 알림 처리: 최근 {lookback_minutes}분 이내 {len(recent_news)}건 발견"
         )
 
-        vector_search = get_vector_search()
+        vector_search = await get_vector_search()
         predictor = get_predictor()
         notifier = get_telegram_notifier()
         embedding_deduplicator = get_embedding_deduplicator()
@@ -72,7 +72,7 @@ def process_new_news_notifications(
 
                 # 0. 임베딩 기반 알림 중복 검사
                 news_text = f"{news.title}\n{news.content}"
-                should_skip, similar_id, similarity = embedding_deduplicator.should_skip_notification(
+                should_skip, similar_id, similarity = await embedding_deduplicator.should_skip_notification(
                     news_text=news_text,
                     stock_code=news.stock_code,
                     db=db,
@@ -91,7 +91,7 @@ def process_new_news_notifications(
                     continue
 
                 # 1. 유사 뉴스 검색
-                similar_news = vector_search.get_news_with_price_changes(
+                similar_news = await vector_search.get_news_with_price_changes(
                     news_text=news_text,
                     stock_code=news.stock_code,
                     db=db,

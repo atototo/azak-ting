@@ -43,7 +43,7 @@ class OrderbookCollector:
         """
         try:
             client = await get_kis_client()
-            result = await client.get_orderbook(stock_code=stock_code)
+            result = await client.get_orderbook(stock_code=stock_code, priority="low")
 
             output1 = result.get("output1", {})
             if not output1:
@@ -191,7 +191,7 @@ class CurrentPriceCollector:
         """단일 종목의 현재가 데이터 수집"""
         try:
             client = await get_kis_client()
-            result = await client.get_current_price(stock_code=stock_code)
+            result = await client.get_current_price(stock_code=stock_code, priority="low")
 
             output = result.get("output", {})
             if not output:
@@ -297,6 +297,7 @@ class InvestorTradingCollector:
         try:
             client = await get_kis_client()
             result = await client.get_investor_trading(
+                priority="low",
                 stock_code=stock_code,
                 start_date=start_date,
                 end_date=end_date
@@ -446,7 +447,7 @@ class SectorIndexCollector:
         """단일 업종 지수 수집"""
         try:
             client = await get_kis_client()
-            result = await client.get_sector_index(sector_code=sector_code)
+            result = await client.get_sector_index(sector_code=sector_code, priority="low")
 
             output = result.get("output", {})
             if not output:
@@ -532,7 +533,7 @@ class OvertimePriceCollector:
         """단일 종목의 시간외 거래 가격 수집 (과거 30일)"""
         try:
             client = await get_kis_client()
-            result = await client.get_overtime_daily_prices(stock_code=stock_code)
+            result = await client.get_overtime_daily_prices(stock_code=stock_code, priority="low")
 
             # output2에 일자별 데이터 있음
             output2 = result.get("output2", [])

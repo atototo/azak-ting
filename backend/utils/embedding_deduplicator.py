@@ -36,9 +36,9 @@ class EmbeddingDeduplicator:
         self.high_similarity_threshold = high_similarity_threshold
         self.medium_similarity_threshold = medium_similarity_threshold
         self.lookback_hours = lookback_hours
-        self.vector_search = get_vector_search()
+        self.vector_search = None  # Lazy initialization in async methods
 
-    def should_skip_prediction(
+    async def should_skip_prediction(
         self,
         news_text: str,
         stock_code: str,
@@ -59,8 +59,12 @@ class EmbeddingDeduplicator:
             - similarity: 유사도 점수
         """
         try:
+            # Lazy initialization of vector_search
+            if self.vector_search is None:
+                self.vector_search = await get_vector_search()
+
             # 1. 최근 뉴스 중 유사도가 높은 뉴스 검색
-            similar_news = self.vector_search.search_similar_news(
+            similar_news = await self.vector_search.search_similar_news(
                 news_text=news_text,
                 stock_code=stock_code,
                 top_k=3,  # 상위 3개만 확인
@@ -118,7 +122,7 @@ class EmbeddingDeduplicator:
             # 오류 발생 시 안전하게 예측 진행
             return False, None, None
 
-    def should_skip_notification(
+    async def should_skip_notification(
         self,
         news_text: str,
         stock_code: str,
@@ -141,8 +145,12 @@ class EmbeddingDeduplicator:
             - similarity: 유사도 점수
         """
         try:
+            # Lazy initialization of vector_search
+            if self.vector_search is None:
+                self.vector_search = await get_vector_search()
+
             # 1. 최근 알림 전송된 뉴스 중 유사도가 높은 뉴스 검색
-            similar_news = self.vector_search.search_similar_news(
+            similar_news = await self.vector_search.search_similar_news(
                 news_text=news_text,
                 stock_code=stock_code,
                 top_k=3,

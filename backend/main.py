@@ -1,6 +1,15 @@
 """
 Azak FastAPI 애플리케이션 진입점
 """
+import os
+
+# 0. 환경 변수 설정 (가장 먼저 실행)
+# PM2/Multiprocessing 환경에서 PyTorch/FAISS 충돌 방지
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

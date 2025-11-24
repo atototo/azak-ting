@@ -3,15 +3,13 @@
 
 모든 뉴스 크롤러의 기본 클래스를 정의합니다.
 """
-import time
+import asyncio
 import logging
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
-import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+import httpx
 
 
 logger = logging.getLogger(__name__)
@@ -56,7 +54,7 @@ class NewsArticleData:
 
 
 class BaseNewsCrawler(ABC):
-    """뉴스 크롤러 추상 베이스 클래스"""
+    """뉴스 크롤러 추상 베이스 클래스 (비동기)"""
 
     def __init__(
         self,
@@ -76,56 +74,49 @@ class BaseNewsCrawler(ABC):
         self.timeout = timeout
         self.max_retries = max_retries
         self.rate_limit_seconds = rate_limit_seconds
-        self.session = self._create_session()
         self.last_request_time: Optional[float] = None
+        self._client: Optional[httpx.AsyncClient] = None
 
-    def _create_session(self) -> requests.Session:
+    async def _get_client(self) -> httpx.AsyncClient:
         """
-        HTTP 세션을 생성합니다.
-        Retry 로직과 User-Agent를 설정합니다.
+        비동기 HTTP 클라이언트를 반환합니다.
 
         Returns:
-            requests.Session 객체
+            httpx.AsyncClient 객체
         """
-        session = requests.Session()
+        if self._client is None or self._client.is_closed:
+            # Retry 전략 설정
+            transport = httpx.AsyncHTTPTransport(retries=self.max_retries)
 
-        # Retry 전략 설정 (exponential backoff)
-        retry_strategy = Retry(
-            total=self.max_retries,
-            backoff_factor=1,  # 1초, 2초, 4초...
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["GET", "POST"],
-        )
+            self._client = httpx.AsyncClient(
+                transport=transport,
+                timeout=self.timeout,
+                follow_redirects=True,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Compatible; Azak/1.0)",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
+                }
+            )
 
-        adapter = HTTPAdapter(max_retries=retry_strategy)
-        session.mount("http://", adapter)
-        session.mount("https://", adapter)
+        return self._client
 
-        # User-Agent 설정
-        session.headers.update(
-            {
-                "User-Agent": "Mozilla/5.0 (Compatible; Azak/1.0)",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
-            }
-        )
-
-        return session
-
-    def _apply_rate_limit(self) -> None:
+    async def _apply_rate_limit(self) -> None:
         """Rate limiting을 적용합니다."""
         if self.last_request_time is not None:
+            import time
             elapsed = time.time() - self.last_request_time
             if elapsed < self.rate_limit_seconds:
                 sleep_time = self.rate_limit_seconds - elapsed
                 logger.debug(f"Rate limiting: sleeping for {sleep_time:.2f}초")
-                time.sleep(sleep_time)
+                await asyncio.sleep(sleep_time)
 
+        import time
         self.last_request_time = time.time()
 
-    def fetch_html(self, url: str) -> Optional[str]:
+    async def fetch_html(self, url: str) -> Optional[str]:
         """
-        URL에서 HTML을 가져옵니다.
+        URL에서 HTML을 가져옵니다 (비동기).
 
         Args:
             url: 요청할 URL
@@ -133,11 +124,12 @@ class BaseNewsCrawler(ABC):
         Returns:
             HTML 문자열 또는 None (실패 시)
         """
-        self._apply_rate_limit()
+        await self._apply_rate_limit()
 
         try:
             logger.info(f"Fetching: {url}")
-            response = self.session.get(url, timeout=self.timeout)
+            client = await self._get_client()
+            response = await client.get(url)
             response.raise_for_status()
 
             # 한글 인코딩 처리
@@ -156,7 +148,7 @@ class BaseNewsCrawler(ABC):
 
             # charset 감지
             try:
-                detected_encoding = response.apparent_encoding or 'utf-8'
+                detected_encoding = response.charset_encoding or 'utf-8'
                 return content.decode(detected_encoding)
             except (UnicodeDecodeError, LookupError):
                 # 마지막 시도: EUC-KR (한국어 사이트용)
@@ -166,22 +158,22 @@ class BaseNewsCrawler(ABC):
                     logger.warning(f"인코딩 변환 실패: {url}, UTF-8로 무시하고 진행")
                     return content.decode('utf-8', errors='ignore')
 
-        except requests.exceptions.Timeout:
+        except httpx.TimeoutException:
             logger.error(f"Timeout error for {url}")
             return None
 
-        except requests.exceptions.HTTPError as e:
+        except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error for {url}: {e}")
             return None
 
-        except requests.exceptions.RequestException as e:
+        except httpx.RequestError as e:
             logger.error(f"Request error for {url}: {e}")
             return None
 
     @abstractmethod
-    def fetch_news(self, limit: int = 10) -> List[NewsArticleData]:
+    async def fetch_news(self, limit: int = 10) -> List[NewsArticleData]:
         """
-        뉴스를 크롤링합니다.
+        뉴스를 크롤링합니다 (비동기).
 
         Args:
             limit: 가져올 뉴스 개수
@@ -191,15 +183,15 @@ class BaseNewsCrawler(ABC):
         """
         pass
 
-    def close(self) -> None:
-        """HTTP 세션을 닫습니다."""
-        if self.session:
-            self.session.close()
+    async def close(self) -> None:
+        """HTTP 클라이언트를 닫습니다."""
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
 
-    def __enter__(self):
-        """Context manager 진입"""
+    async def __aenter__(self):
+        """Async context manager 진입"""
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager 종료"""
-        self.close()
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager 종료"""
+        await self.close()

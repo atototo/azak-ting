@@ -208,7 +208,7 @@ class NewsSaver:
 
             # 0. 임베딩 기반 중복 검사 (예측 skip 여부 확인)
             news_text = f"{news_article.title} {news_article.content}"
-            should_skip, similar_id, similarity = self.embedding_deduplicator.should_skip_prediction(
+            should_skip, similar_id, similarity = await self.embedding_deduplicator.should_skip_prediction(
                 news_text=news_text,
                 stock_code=stock_code,
                 db=self.db,
@@ -222,8 +222,8 @@ class NewsSaver:
                 return
 
             # 1. 유사 뉴스 검색
-            vector_search = get_vector_search()
-            similar_news = vector_search.get_news_with_price_changes(
+            vector_search = await get_vector_search()
+            similar_news = await vector_search.get_news_with_price_changes(
                 news_text=news_text,
                 stock_code=stock_code,
                 db=self.db,

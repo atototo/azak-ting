@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class HankyungNewsCrawler(BaseNewsCrawler):
-    """한국경제 증권 뉴스 크롤러"""
+    """한국경제 증권 뉴스 크롤러 (비동기)"""
 
     BASE_URL = "https://www.hankyung.com/finance/stock"
 
@@ -101,9 +101,9 @@ class HankyungNewsCrawler(BaseNewsCrawler):
             logger.error(f"날짜 파싱 에러: {e}")
             return datetime.now()
 
-    def fetch_news(self, limit: int = 10) -> List[NewsArticleData]:
+    async def fetch_news(self, limit: int = 10) -> List[NewsArticleData]:
         """
-        한국경제 증권 뉴스를 크롤링합니다.
+        한국경제 증권 뉴스를 크롤링합니다 (비동기).
 
         Args:
             limit: 가져올 뉴스 개수
@@ -115,8 +115,8 @@ class HankyungNewsCrawler(BaseNewsCrawler):
 
         logger.info(f"한국경제 뉴스 크롤링 시작 (limit={limit})")
 
-        # HTML 가져오기
-        html = self.fetch_html(self.BASE_URL)
+        # HTML 가져오기 (비동기)
+        html = await self.fetch_html(self.BASE_URL)
 
         if not html:
             logger.error("페이지 가져오기 실패")

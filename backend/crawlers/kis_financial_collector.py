@@ -36,7 +36,8 @@ async def collect_financial_ratios_for_all_stocks():
                 # KIS API 호출 (연간 데이터)
                 api_data = await client.get_financial_ratios(
                     stock_code=stock.code,
-                    div_cls_code="0"  # 0: 년도별
+                    div_cls_code="0",  # 0: 년도별
+                    priority="low"
                 )
 
                 # DB 저장 (중복 방지)

@@ -1,0 +1,353 @@
+"""
+뉴스 벡터 검색 모듈
+
+FAISS에서 유사한 과거 뉴스를 검색하고, 해당 뉴스의 주가 변동률을 조회합니다.
+"""
+import logging
+import os
+import pickle
+from typing import List, Dict, Any, Optional
+from datetime import datetime
+import asyncio
+
+import faiss
+import numpy as np
+from sqlalchemy.orm import Session
+
+from backend.config import settings
+from backend.llm.embedder import get_news_embedder
+from backend.db.models.news import NewsArticle
+from backend.db.models.match import NewsStockMatch
+from backend.llm.model_lock import ModelLoadLock
+
+
+logger = logging.getLogger(__name__)
+
+
+class NewsVectorSearch:
+    """뉴스 벡터 검색 클래스 - FAISS 기반"""
+
+    def __init__(self):
+        """벡터 검색 초기화"""
+        self.embedder = get_news_embedder()  # 싱글톤 사용
+        self.index_path = settings.FAISS_INDEX_PATH
+        self.metadata_path = settings.FAISS_METADATA_PATH
+        self._index = None
+        self._metadata = None
+
+    def _ensure_index_dir(self):
+        """인덱스 디렉토리 생성"""
+        os.makedirs(os.path.dirname(self.index_path), exist_ok=True)
+        os.makedirs(os.path.dirname(self.metadata_path), exist_ok=True)
+
+    async def _load_index(self):
+        """FAISS 인덱스 및 메타데이터 로드 (PyTorch 동시성 제어)"""
+        async with ModelLoadLock.get_lock():
+            if self._index is not None:
+                return
+
+            if not os.path.exists(self.index_path) or not os.path.exists(self.metadata_path):
+                logger.warning("FAISS 인덱스가 존재하지 않습니다. 빈 인덱스로 초기화합니다.")
+                self._index = faiss.IndexFlatL2(settings.EMBEDDING_DIM)
+                self._metadata = []
+                return
+
+            try:
+                # FAISS 인덱스 로드
+                self._index = faiss.read_index(self.index_path)
+
+                # 메타데이터 로드
+                with open(self.metadata_path, 'rb') as f:
+                    self._metadata = pickle.load(f)
+
+                logger.info(f"FAISS 인덱스 로드 완료: {self._index.ntotal}개 벡터")
+
+            except Exception as e:
+                logger.error(f"FAISS 인덱스 로드 실패: {e}")
+                self._index = faiss.IndexFlatL2(settings.EMBEDDING_DIM)
+                self._metadata = []
+
+    def _save_index(self):
+        """FAISS 인덱스 및 메타데이터 저장"""
+        try:
+            self._ensure_index_dir()
+
+            # FAISS 인덱스 저장
+            faiss.write_index(self._index, self.index_path)
+
+            # 메타데이터 저장
+            with open(self.metadata_path, 'wb') as f:
+                pickle.dump(self._metadata, f)
+
+            logger.info(f"FAISS 인덱스 저장 완료: {self._index.ntotal}개 벡터")
+
+        except Exception as e:
+            logger.error(f"FAISS 인덱스 저장 실패: {e}")
+
+    def add_embeddings(
+        self,
+        news_ids: List[int],
+        embeddings: List[List[float]],
+        stock_codes: List[str],
+        published_timestamps: List[int],
+    ) -> int:
+        """
+        임베딩을 FAISS 인덱스에 추가합니다.
+
+        Args:
+            news_ids: 뉴스 ID 리스트
+            embeddings: 임베딩 벡터 리스트
+            stock_codes: 종목 코드 리스트
+            published_timestamps: 발행 시간 타임스탬프 리스트
+
+        Returns:
+            추가된 벡터 개수
+        """
+        if len(news_ids) != len(embeddings) != len(stock_codes) != len(published_timestamps):
+            logger.error("입력 리스트 길이가 일치하지 않습니다")
+            return 0
+
+        try:
+            self._load_index()
+
+            # numpy 배열로 변환
+            embeddings_np = np.array(embeddings, dtype=np.float32)
+
+            # FAISS 인덱스에 추가
+            self._index.add(embeddings_np)
+
+            # 메타데이터 추가
+            for i in range(len(news_ids)):
+                self._metadata.append({
+                    "news_article_id": news_ids[i],
+                    "stock_code": stock_codes[i],
+                    "published_timestamp": published_timestamps[i],
+                })
+
+            # 저장
+            self._save_index()
+
+            logger.info(f"FAISS에 {len(news_ids)}개 벡터 추가 완료")
+            return len(news_ids)
+
+        except Exception as e:
+            logger.error(f"FAISS 벡터 추가 실패: {e}")
+            return 0
+
+    def get_indexed_news_ids(self) -> set:
+        """
+        FAISS에 이미 인덱싱된 뉴스 ID 목록을 반환합니다.
+
+        Returns:
+            인덱싱된 뉴스 ID 집합
+        """
+        try:
+            self._load_index()
+
+            if not self._metadata:
+                return set()
+
+            return set(meta["news_article_id"] for meta in self._metadata)
+
+        except Exception as e:
+            logger.error(f"인덱싱된 뉴스 조회 실패: {e}")
+            return set()
+
+    def search_similar_news(
+        self,
+        news_text: str,
+        stock_code: Optional[str] = None,
+        top_k: int = 5,
+        similarity_threshold: float = 0.7,
+    ) -> List[Dict[str, Any]]:
+        """
+        유사한 과거 뉴스를 검색합니다.
+
+        Args:
+            news_text: 검색할 뉴스 텍스트
+            stock_code: 종목 코드 (필터링용, 선택사항)
+            top_k: 반환할 최대 개수
+            similarity_threshold: 유사도 임계값 (0.0 ~ 1.0)
+
+        Returns:
+            유사 뉴스 리스트 [
+                {
+                    "news_id": int,
+                    "similarity": float,
+                    "stock_code": str,
+                    "published_at": int
+                },
+                ...
+            ]
+        """
+        try:
+            self._load_index()
+
+            if self._index.ntotal == 0:
+                logger.warning("FAISS 인덱스가 비어있습니다")
+                return []
+
+            # 1. 뉴스 텍스트 임베딩
+            embedding = self.embedder.embed_text(news_text)
+            if not embedding:
+                logger.error("뉴스 임베딩 생성 실패")
+                return []
+
+            # numpy 배열로 변환
+            query_vector = np.array([embedding], dtype=np.float32)
+
+            # 2. FAISS 검색 (L2 거리)
+            # 종목 코드 필터링을 위해 여유있게 검색
+            search_k = top_k * 10 if stock_code else top_k * 2
+            distances, indices = self._index.search(query_vector, min(search_k, self._index.ntotal))
+
+            # 3. 결과 파싱
+            similar_news = []
+
+            for i, (distance, idx) in enumerate(zip(distances[0], indices[0])):
+                if idx == -1:  # 유효하지 않은 인덱스
+                    continue
+
+                # 메타데이터 조회
+                if idx >= len(self._metadata):
+                    continue
+
+                meta = self._metadata[idx]
+
+                # 종목 코드 필터링
+                if stock_code and meta["stock_code"] != stock_code:
+                    continue
+
+                # L2 거리를 코사인 유사도로 변환
+                # L2 거리가 작을수록 유사함
+                # 유사도 = 1 / (1 + L2_distance)
+                similarity = 1 / (1 + float(distance))
+
+                if similarity >= similarity_threshold:
+                    similar_news.append({
+                        "news_id": meta["news_article_id"],
+                        "similarity": round(similarity, 4),
+                        "stock_code": meta["stock_code"],
+                        "published_at": meta["published_timestamp"],
+                    })
+
+                # top_k개만 반환
+                if len(similar_news) >= top_k:
+                    break
+
+            logger.info(f"유사 뉴스 검색 완료: {len(similar_news)}건 (임계값: {similarity_threshold})")
+            return similar_news
+
+        except Exception as e:
+            logger.error(f"벡터 검색 실패: {e}", exc_info=True)
+            return []
+
+    def get_news_with_price_changes(
+        self,
+        news_text: str,
+        stock_code: Optional[str] = None,
+        db: Session = None,
+        top_k: int = 5,
+        similarity_threshold: float = 0.7,
+    ) -> List[Dict[str, Any]]:
+        """
+        유사 뉴스와 해당 뉴스의 주가 변동률을 함께 조회합니다.
+
+        Args:
+            news_text: 검색할 뉴스 텍스트
+            stock_code: 종목 코드 (필터링용)
+            db: 데이터베이스 세션
+            top_k: 반환할 최대 개수
+            similarity_threshold: 유사도 임계값
+
+        Returns:
+            유사 뉴스 및 주가 변동률 리스트 [
+                {
+                    "news_id": int,
+                    "similarity": float,
+                    "news_title": str,
+                    "news_content": str,
+                    "stock_code": str,
+                    "published_at": datetime,
+                    "price_changes": {
+                        "1d": float or None,
+                        "2d": float or None,
+                        "3d": float or None,
+                        "5d": float or None,
+                        "10d": float or None,
+                        "20d": float or None
+                    }
+                },
+                ...
+            ]
+        """
+        # 1. 유사 뉴스 검색
+        similar_news = self.search_similar_news(
+            news_text=news_text,
+            stock_code=stock_code,
+            top_k=top_k,
+            similarity_threshold=similarity_threshold,
+        )
+
+        if not similar_news or not db:
+            return []
+
+        # 2. 뉴스 상세 정보 및 주가 변동률 조회
+        enriched_news = []
+
+        for news in similar_news:
+            news_id = news["news_id"]
+
+            # 뉴스 정보 조회
+            news_article = db.query(NewsArticle).filter(NewsArticle.id == news_id).first()
+            if not news_article:
+                continue
+
+            # 주가 변동률 조회
+            match = (
+                db.query(NewsStockMatch)
+                .filter(
+                    NewsStockMatch.news_id == news_id,
+                    NewsStockMatch.stock_code == news["stock_code"]
+                )
+                .first()
+            )
+
+            price_changes = {
+                "1d": match.price_change_1d if match else None,
+                "2d": match.price_change_2d if match else None,
+                "3d": match.price_change_3d if match else None,
+                "5d": match.price_change_5d if match else None,
+                "10d": match.price_change_10d if match else None,
+                "20d": match.price_change_20d if match else None,
+            }
+
+            enriched_news.append({
+                "news_id": news_id,
+                "similarity": news["similarity"],
+                "news_title": news_article.title,
+                "news_content": news_article.content[:200] + "...",  # 요약
+                "stock_code": news["stock_code"],
+                "published_at": news_article.published_at,
+                "price_changes": price_changes,
+            })
+
+        logger.info(f"유사 뉴스 + 주가 변동률 조회 완료: {len(enriched_news)}건")
+        return enriched_news
+
+
+# 싱글톤 인스턴스
+_vector_search: Optional[NewsVectorSearch] = None
+
+
+def get_vector_search() -> NewsVectorSearch:
+    """
+    NewsVectorSearch 싱글톤 인스턴스를 반환합니다.
+
+    Returns:
+        NewsVectorSearch 인스턴스
+    """
+    global _vector_search
+    if _vector_search is None:
+        _vector_search = NewsVectorSearch()
+    return _vector_search

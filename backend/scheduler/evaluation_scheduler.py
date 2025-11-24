@@ -5,7 +5,7 @@ Automated evaluation scheduler.
 """
 import logging
 from datetime import datetime, timedelta
-from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from backend.db.session import SessionLocal
 from backend.services.evaluation_service import EvaluationService
@@ -16,13 +16,13 @@ logger = logging.getLogger(__name__)
 
 class EvaluationScheduler:
     """
-    평가 스케줄러.
+    평가 스케줄러 (비동기).
 
     매일 16:00에 D-1일 Investment Report를 자동 평가합니다.
     """
 
     def __init__(self):
-        self.scheduler = BackgroundScheduler()
+        self.scheduler = AsyncIOScheduler(timezone="Asia/Seoul")
 
     def start(self):
         """스케줄러 시작."""

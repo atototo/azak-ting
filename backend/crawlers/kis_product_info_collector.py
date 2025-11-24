@@ -34,7 +34,7 @@ async def collect_product_info_for_all_stocks():
                 logger.debug(f"Fetching product info for {stock.code} ({stock.name})")
 
                 # KIS API 호출
-                api_data = await client.get_product_info(stock.code)
+                api_data = await client.get_product_info(stock.code, priority="low")
 
                 # DB 저장 (UPSERT)
                 save_product_info(db, stock.code, api_data)

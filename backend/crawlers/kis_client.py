@@ -21,7 +21,20 @@ logger = logging.getLogger(__name__)
 
 
 class RateLimiter:
-    """Rate Limiter (Sliding Window 알고리즘)"""
+    """Rate Limiter (Sliding Window 알고리즘) - Singleton Pattern"""
+
+    _instance = None
+    _lock_class = None  # Class-level lock for singleton creation
+
+    def __new__(cls, max_requests: int = 20, window_seconds: float = 1.0):
+        """싱글톤 패턴 구현"""
+        if cls._instance is None:
+            logger.info("🔧 Creating NEW RateLimiter singleton instance")
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        else:
+            logger.debug("♻️  Reusing existing RateLimiter singleton instance")
+        return cls._instance
 
     def __init__(self, max_requests: int = 20, window_seconds: float = 1.0):
         """
@@ -29,13 +42,25 @@ class RateLimiter:
             max_requests: 시간 창 내 최대 요청 수
             window_seconds: 시간 창 (초)
         """
+        # 이미 초기화되었으면 스킵
+        if self._initialized:
+            return
+
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self.requests = []
         self._lock = None  # Lazy initialization to avoid event loop binding issues
+        self._initialized = True
 
-    async def acquire(self):
-        """Rate limit 획득 (필요 시 대기)"""
+        logger.info(f"🔒 GlobalRateLimiter 초기화: 초당 {max_requests}건 제한")
+
+    async def acquire(self, priority: str = "normal"):
+        """
+        Rate limit 획득 (필요 시 대기)
+
+        Args:
+            priority: 우선순위 ("high" = 사용자 요청, "normal" = 일반, "low" = 배치 작업)
+        """
         # Lazy initialization: Lock 생성 (event loop가 실행 중일 때만)
         # 이벤트 루프가 변경되면 Lock 재생성 필요
         try:
@@ -67,14 +92,21 @@ class RateLimiter:
                 if now - req_time < self.window_seconds
             ]
 
+            current_count = len(self.requests)
+            logger.debug(f"🔢 Rate limiter state: {current_count}/{self.max_requests} requests in window (priority: {priority})")
+
             # 제한 확인
-            if len(self.requests) >= self.max_requests:
+            if current_count >= self.max_requests:
                 # 가장 오래된 요청이 만료될 때까지 대기
                 oldest = self.requests[0]
                 wait_time = self.window_seconds - (now - oldest)
 
                 if wait_time > 0:
-                    logger.debug(f"Rate limit 대기: {wait_time:.2f}초")
+                    # Priority에 따라 로그 레벨 조정
+                    if priority == "high":
+                        logger.warning(f"⚠️  Rate limit 대기 (우선순위: {priority}): {wait_time:.2f}초")
+                    else:
+                        logger.info(f"⏳ Rate limit 대기 (우선순위: {priority}): {wait_time:.2f}초")
                     await asyncio.sleep(wait_time)
 
                 # 재확인
@@ -93,6 +125,7 @@ class TokenManager:
 
     _instance = None
     _lock = None  # Lazy initialization to avoid event loop binding issues
+    _client: Optional[httpx.AsyncClient] = None  # Shared HTTP client
     TOKEN_TYPE = "access_token"
 
     # Rate limit 설정
@@ -121,6 +154,21 @@ class TokenManager:
 
         self.initialized = True
         logger.info("🔑 TokenManager 싱글톤 초기화 완료 (PostgreSQL 연동)")
+
+    @classmethod
+    async def _get_client(cls) -> httpx.AsyncClient:
+        """
+        재사용 가능한 HTTP 클라이언트를 반환합니다 (클래스 레벨 싱글톤).
+
+        Returns:
+            httpx.AsyncClient 객체
+        """
+        if cls._client is None or cls._client.is_closed:
+            cls._client = httpx.AsyncClient(
+                timeout=30.0,  # 타임아웃 10초 → 30초로 증가
+                follow_redirects=True,
+            )
+        return cls._client
 
     def _check_circuit_breaker(self) -> bool:
         """
@@ -308,64 +356,64 @@ class TokenManager:
         }
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(url, json=payload, timeout=10.0)
+            client = await self._get_client()
+            response = await client.post(url, json=payload)
 
-                if response.status_code != 200:
-                    error_text = response.text
-                    
-                    # Rate Limit 에러 처리
-                    if response.status_code == 403:
-                        self._handle_rate_limit_error(error_text)
-                    
-                    raise Exception(f"Token 발급 실패: {response.status_code}, {error_text}")
+            if response.status_code != 200:
+                error_text = response.text
 
-                data = response.json()
+                # Rate Limit 에러 처리
+                if response.status_code == 403:
+                    self._handle_rate_limit_error(error_text)
 
-                access_token = data["access_token"]
-                expires_in = int(data.get("expires_in", 86400))  # 기본 24시간
-                token_expires_at = datetime.now() + timedelta(seconds=expires_in)
+                raise Exception(f"Token 발급 실패: {response.status_code}, {error_text}")
 
-                # PostgreSQL에 저장 (UPSERT)
+            data = response.json()
+
+            access_token = data["access_token"]
+            expires_in = int(data.get("expires_in", 86400))  # 기본 24시간
+            token_expires_at = datetime.now() + timedelta(seconds=expires_in)
+
+            # PostgreSQL에 저장 (UPSERT)
+            try:
+                db = SessionLocal()
                 try:
-                    db = SessionLocal()
-                    try:
-                        # 기존 토큰 확인
-                        token_record = db.query(KISToken).filter(
-                            KISToken.token_type == self.TOKEN_TYPE
-                        ).first()
+                    # 기존 토큰 확인
+                    token_record = db.query(KISToken).filter(
+                        KISToken.token_type == self.TOKEN_TYPE
+                    ).first()
 
-                        if token_record:
-                            # 업데이트
-                            token_record.token_value = access_token
-                            token_record.expires_at = token_expires_at
-                            token_record.updated_at = datetime.now()
-                        else:
-                            # 신규 생성
-                            token_record = KISToken(
-                                token_type=self.TOKEN_TYPE,
-                                token_value=access_token,
-                                expires_at=token_expires_at
-                            )
-                            db.add(token_record)
-
-                        db.commit()
-
-                        # 성공 시 Rate limit 카운터 리셋
-                        self._memory_rate_limit_count = 0
-                        self._memory_circuit_breaker_until = None
-
-                        logger.info(
-                            f"✅ Access Token 발급 및 DB 저장 완료 "
-                            f"(만료: {token_expires_at.strftime('%Y-%m-%d %H:%M:%S')})"
+                    if token_record:
+                        # 업데이트
+                        token_record.token_value = access_token
+                        token_record.expires_at = token_expires_at
+                        token_record.updated_at = datetime.now()
+                    else:
+                        # 신규 생성
+                        token_record = KISToken(
+                            token_type=self.TOKEN_TYPE,
+                            token_value=access_token,
+                            expires_at=token_expires_at
                         )
+                        db.add(token_record)
 
-                    finally:
-                        db.close()
+                    db.commit()
 
-                except Exception as e:
-                    logger.error(f"❌ DB 저장 실패: {e}")
-                    raise
+                    # 성공 시 Rate limit 카운터 리셋
+                    self._memory_rate_limit_count = 0
+                    self._memory_circuit_breaker_until = None
+
+                    logger.info(
+                        f"✅ Access Token 발급 및 DB 저장 완료 "
+                        f"(만료: {token_expires_at.strftime('%Y-%m-%d %H:%M:%S')})"
+                    )
+
+                finally:
+                    db.close()
+
+            except Exception as e:
+                logger.error(f"❌ DB 저장 실패: {e}")
+                raise
 
         except Exception as e:
             logger.error(f"❌ Token 발급 실패: {e}")
@@ -399,10 +447,36 @@ class KISClient:
             # 실전투자: 초당 20건
             self.rate_limiter = RateLimiter(max_requests=20, window_seconds=1.0)
 
+        # HTTP Client (재사용 가능한 연결 풀)
+        self._client: Optional[httpx.AsyncClient] = None
+
         logger.info(
             f"KIS API Client 초기화 완료 "
             f"(모드: {'모의투자' if self.mock_mode else '실전투자'})"
         )
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """
+        재사용 가능한 HTTP 클라이언트를 반환합니다.
+
+        Returns:
+            httpx.AsyncClient 객체
+        """
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(
+                    connect=60.0,  # 연결 타임아웃 60초
+                    read=30.0,     # 읽기 타임아웃 30초
+                    write=30.0,    # 쓰기 타임아웃 30초
+                    pool=30.0      # 풀 타임아웃 30초
+                ),
+                follow_redirects=True,
+                limits=httpx.Limits(
+                    max_connections=100,
+                    max_keepalive_connections=20,
+                ),
+            )
+        return self._client
 
     async def request(
         self,
@@ -411,7 +485,8 @@ class KISClient:
         tr_id: str,
         params: Optional[Dict[str, Any]] = None,
         data: Optional[Dict[str, Any]] = None,
-        max_retries: int = 3
+        max_retries: int = 3,
+        priority: str = "normal"
     ) -> Dict[str, Any]:
         """
         KIS API 요청 (Rate Limiting + 자동 재시도)
@@ -423,12 +498,13 @@ class KISClient:
             params: Query 파라미터
             data: Request Body
             max_retries: 최대 재시도 횟수
+            priority: 우선순위 ("high"=사용자 요청, "normal"=일반, "low"=배치 작업)
 
         Returns:
             API 응답 (JSON)
         """
-        # Rate Limiting
-        await self.rate_limiter.acquire()
+        # Rate Limiting (우선순위 적용)
+        await self.rate_limiter.acquire(priority)
 
         # Access Token 획득
         access_token = await self.token_manager.get_access_token()
@@ -448,64 +524,70 @@ class KISClient:
         # 재시도 로직 (Exponential Backoff)
         for attempt in range(max_retries):
             try:
-                async with httpx.AsyncClient() as client:
-                    if method.upper() == "GET":
-                        response = await client.get(
-                            url,
-                            headers=headers,
-                            params=params,
-                            timeout=30.0
-                        )
-                    elif method.upper() == "POST":
-                        response = await client.post(
-                            url,
-                            headers=headers,
-                            json=data,
-                            timeout=30.0
-                        )
+                client = await self._get_client()
+
+                if method.upper() == "GET":
+                    response = await client.get(
+                        url,
+                        headers=headers,
+                        params=params,
+                    )
+                elif method.upper() == "POST":
+                    response = await client.post(
+                        url,
+                        headers=headers,
+                        json=data,
+                    )
+                else:
+                    raise ValueError(f"지원하지 않는 HTTP 메서드: {method}")
+
+                # 응답 처리
+                if response.status_code == 200:
+                    result = response.json()
+
+                    # API 성공 여부 확인
+                    rt_cd = result.get("rt_cd", "1")
+                    if rt_cd == "0":
+                        return result
                     else:
-                        raise ValueError(f"지원하지 않는 HTTP 메서드: {method}")
-
-                    # 응답 처리
-                    if response.status_code == 200:
-                        result = response.json()
-
-                        # API 성공 여부 확인
-                        rt_cd = result.get("rt_cd", "1")
-                        if rt_cd == "0":
-                            return result
-                        else:
-                            # API 에러
-                            msg1 = result.get("msg1", "")
-                            msg_cd = result.get("msg_cd", "")
-                            raise Exception(
-                                f"API 에러: rt_cd={rt_cd}, msg_cd={msg_cd}, msg1={msg1}, "
-                                f"response={result}"
-                            )
-
-                    elif response.status_code == 429:
-                        # Rate Limit 초과
-                        wait_time = 2 ** attempt  # Exponential Backoff
-                        logger.warning(f"Rate Limit 초과, {wait_time}초 대기 중...")
-                        await asyncio.sleep(wait_time)
-                        continue
-
-                    else:
+                        # API 에러
+                        msg1 = result.get("msg1", "")
+                        msg_cd = result.get("msg_cd", "")
                         raise Exception(
-                            f"HTTP 에러: {response.status_code}, {response.text}"
+                            f"API 에러: rt_cd={rt_cd}, msg_cd={msg_cd}, msg1={msg1}, "
+                            f"response={result}"
                         )
+
+                elif response.status_code == 429:
+                    # Rate Limit 초과
+                    wait_time = 2 ** attempt  # Exponential Backoff
+                    logger.warning(f"Rate Limit 초과, {wait_time}초 대기 중...")
+                    await asyncio.sleep(wait_time)
+                    continue
+
+                else:
+                    raise Exception(
+                        f"HTTP 에러: {response.status_code}, {response.text}"
+                    )
 
             except Exception as e:
+                error_type = type(e).__name__
+                error_msg = str(e) if str(e) else repr(e)
+
                 if attempt == max_retries - 1:
                     # 최종 실패
-                    logger.error(f"❌ API 요청 실패 ({max_retries}회 재시도): {e}")
+                    logger.error(
+                        f"❌ API 요청 실패 ({max_retries}회 재시도): "
+                        f"{error_type}: {error_msg}",
+                        exc_info=True
+                    )
                     raise
 
                 # 재시도
                 wait_time = 2 ** attempt
                 logger.warning(
                     f"⚠️  API 요청 실패 ({attempt + 1}/{max_retries}), "
-                    f"{wait_time}초 후 재시도: {e}"
+                    f"{wait_time}초 후 재시도: {error_type}: {error_msg}"
                 )
                 await asyncio.sleep(wait_time)
 
@@ -515,7 +597,8 @@ class KISClient:
         self,
         stock_code: str,
         start_date: datetime,
-        end_date: Optional[datetime] = None
+        end_date: Optional[datetime] = None,
+        priority: str = "normal"
     ) -> Dict[str, Any]:
         """
         일봉 데이터 조회
@@ -524,6 +607,7 @@ class KISClient:
             stock_code: 종목 코드 (6자리)
             start_date: 시작 날짜
             end_date: 종료 날짜 (기본: 오늘)
+            priority: 우선순위 ("high"=사용자 요청, "normal"=일반, "low"=배치 작업)
 
         Returns:
             일봉 데이터 (JSON)
@@ -547,15 +631,17 @@ class KISClient:
             method="GET",
             endpoint="/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice",
             tr_id=tr_id,
-            params=params
+            params=params,
+            priority=priority
         )
 
-    async def get_current_price(self, stock_code: str) -> Dict[str, Any]:
+    async def get_current_price(self, stock_code: str, priority: str = "normal") -> Dict[str, Any]:
         """
         현재가 조회
 
         Args:
             stock_code: 종목 코드 (6자리)
+            priority: 우선순위 ("high"=사용자 요청, "normal"=일반, "low"=배치 작업)
 
         Returns:
             현재가 데이터 (JSON)
@@ -571,13 +657,15 @@ class KISClient:
             method="GET",
             endpoint="/uapi/domestic-stock/v1/quotations/inquire-price",
             tr_id=tr_id,
-            params=params
+            params=params,
+            priority=priority
         )
 
     async def get_minute_prices(
         self,
         stock_code: str,
-        start_time: Optional[str] = None
+        start_time: Optional[str] = None,
+        priority: str = "normal"
     ) -> Dict[str, Any]:
         """
         1분봉 데이터 조회 (당일)
@@ -585,6 +673,7 @@ class KISClient:
         Args:
             stock_code: 종목 코드 (6자리)
             start_time: 시작 시간 (HHMMSS, 기본: 090000)
+            priority: 우선순위 ("high"=사용자 요청, "normal"=일반, "low"=배치 작업)
 
         Returns:
             1분봉 데이터 (JSON)
@@ -624,14 +713,16 @@ class KISClient:
             method="GET",
             endpoint="/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice",
             tr_id=tr_id,
-            params=params
+            params=params,
+            priority=priority
         )
 
     async def get_daily_minute_prices(
         self,
         stock_code: str,
         target_date: str,
-        start_time: Optional[str] = None
+        start_time: Optional[str] = None,
+        priority: str = "normal"
     ) -> Dict[str, Any]:
         """
         일별 1분봉 데이터 조회 (과거 일자 조회 가능)
@@ -640,6 +731,7 @@ class KISClient:
             stock_code: 종목 코드 (6자리)
             target_date: 조회 일자 (YYYYMMDD)
             start_time: 시작 시간 (HHMMSS, 기본: 090000)
+            priority: 우선순위 ("high"=사용자 요청, "normal"=일반, "low"=배치 작업)
 
         Returns:
             1분봉 데이터 (JSON)
@@ -689,15 +781,17 @@ class KISClient:
             method="GET",
             endpoint="/uapi/domestic-stock/v1/quotations/inquire-time-dailychartprice",
             tr_id=tr_id,
-            params=params
+            params=params,
+            priority=priority
         )
 
-    async def get_orderbook(self, stock_code: str) -> Dict[str, Any]:
+    async def get_orderbook(self, stock_code: str, priority: str = "normal") -> Dict[str, Any]:
         """
         호가 데이터 조회 (매수/매도 10호가)
 
         Args:
             stock_code: 종목 코드 (6자리)
+            priority: 우선순위 ("high"=사용자 요청, "normal"=일반, "low"=배치 작업)
 
         Returns:
             호가 데이터 (JSON)
@@ -728,15 +822,17 @@ class KISClient:
             method="GET",
             endpoint="/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn",
             tr_id=tr_id,
-            params=params
+            params=params,
+            priority=priority
         )
 
-    async def get_current_price(self, stock_code: str) -> Dict[str, Any]:
+    async def get_current_price_detailed(self, stock_code: str, priority: str = "normal") -> Dict[str, Any]:
         """
-        현재가 시세 조회 (체결가, 체결량 포함)
+        현재가 시세 조회 (체결가, 체결량 포함) - 상세 버전
 
         Args:
             stock_code: 종목 코드 (6자리)
+            priority: 우선순위 ("high"=사용자 요청, "normal"=일반, "low"=배치 작업)
 
         Returns:
             현재가 시세 데이터 (JSON)
@@ -777,14 +873,16 @@ class KISClient:
             method="GET",
             endpoint="/uapi/domestic-stock/v1/quotations/inquire-price",
             tr_id=tr_id,
-            params=params
+            params=params,
+            priority=priority
         )
 
     async def get_investor_trading(
         self,
         stock_code: str,
         start_date: Optional[str] = None,
-        end_date: Optional[str] = None
+        end_date: Optional[str] = None,
+        priority: str = "normal"
     ) -> Dict[str, Any]:
         """
         투자자별 매매동향 조회 (기관, 외국인, 개인 등)
@@ -793,6 +891,7 @@ class KISClient:
             stock_code: 종목 코드 (6자리)
             start_date: 시작 날짜 (YYYYMMDD, 기본: 최근 30일 전)
             end_date: 종료 날짜 (YYYYMMDD, 기본: 오늘)
+            priority: 우선순위 ("high"=사용자 요청, "normal"=일반, "low"=배치 작업)
 
         Returns:
             투자자별 매매동향 데이터 (JSON)
@@ -834,15 +933,17 @@ class KISClient:
             method="GET",
             endpoint="/uapi/domestic-stock/v1/quotations/inquire-investor",
             tr_id=tr_id,
-            params=params
+            params=params,
+            priority=priority
         )
 
-    async def get_stock_info(self, stock_code: str) -> Dict[str, Any]:
+    async def get_stock_info(self, stock_code: str, priority: str = "normal") -> Dict[str, Any]:
         """
         종목 기본정보 조회 (업종, 상장주식수, 자본금 등)
 
         Args:
             stock_code: 종목 코드 (6자리)
+            priority: 우선순위 ("high"=사용자 요청, "normal"=일반, "low"=배치 작업)
 
         Returns:
             종목 기본정보 (JSON)
@@ -874,12 +975,14 @@ class KISClient:
             method="GET",
             endpoint="/uapi/domestic-stock/v1/quotations/search-stock-info",
             tr_id=tr_id,
-            params=params
+            params=params,
+            priority=priority
         )
 
     async def get_sector_index(
         self,
-        sector_code: str = "0001"  # 0001: KOSPI, 1001: KOSDAQ
+        sector_code: str = "0001",  # 0001: KOSPI, 1001: KOSDAQ
+        priority: str = "normal"
     ) -> Dict[str, Any]:
         """
         업종 지수 조회
@@ -892,6 +995,7 @@ class KISClient:
                 - 0051: KOSPI 금융
                 - 0052: KOSPI 산업재
                 - 기타 업종 코드...
+            priority: 우선순위 ("high"=사용자 요청, "normal"=일반, "low"=배치 작업)
 
         Returns:
             업종 지수 데이터 (JSON)
@@ -924,14 +1028,16 @@ class KISClient:
             method="GET",
             endpoint="/uapi/domestic-stock/v1/quotations/inquire-index-price",
             tr_id=tr_id,
-            params=params
+            params=params,
+            priority=priority
         )
 
     async def get_index_daily_price(
         self,
         index_code: str,
         start_date: Optional[str] = None,
-        period_div_code: str = "D"
+        period_div_code: str = "D",
+        priority: str = "normal"
     ) -> Dict[str, Any]:
         """
         업종 일자별 지수 조회 (과거 데이터, 최대 100건)
@@ -944,6 +1050,7 @@ class KISClient:
                 - 기타 업종 코드 (포탈 FAQ - 업종코드 참조)
             start_date: 조회 시작일 (YYYYMMDD, 기본: 오늘부터 역순 100일)
             period_div_code: 기간 구분 (D:일별, W:주별, M:월별)
+            priority: 우선순위 ("high"=사용자 요청, "normal"=일반, "low"=배치 작업)
 
         Returns:
             업종 일자별 지수 데이터 (JSON)
@@ -994,15 +1101,17 @@ class KISClient:
             method="GET",
             endpoint="/uapi/domestic-stock/v1/quotations/inquire-index-daily-price",
             tr_id=tr_id,
-            params=params
+            params=params,
+            priority=priority
         )
 
-    async def get_overtime_price(self, stock_code: str) -> Dict[str, Any]:
+    async def get_overtime_price(self, stock_code: str, priority: str = "normal") -> Dict[str, Any]:
         """
         시간외 현재가 조회 (실시간)
 
         Args:
             stock_code: 종목 코드 (6자리)
+            priority: 우선순위 ("high"=사용자 요청, "normal"=일반, "low"=배치 작업)
 
         Returns:
             시간외 현재가 데이터 (JSON)
@@ -1032,18 +1141,21 @@ class KISClient:
             method="GET",
             endpoint="/uapi/domestic-stock/v1/quotations/inquire-overtime-price",
             tr_id=tr_id,
-            params=params
+            params=params,
+            priority=priority
         )
 
     async def get_overtime_daily_prices(
         self,
-        stock_code: str
+        stock_code: str,
+        priority: str = "normal"
     ) -> Dict[str, Any]:
         """
         시간외 일자별 주가 조회 (과거 데이터)
 
         Args:
             stock_code: 종목 코드 (6자리)
+            priority: 우선순위 ("high"=사용자 요청, "normal"=일반, "low"=배치 작업)
 
         Returns:
             시간외 일자별 주가 데이터 (JSON)
@@ -1084,14 +1196,16 @@ class KISClient:
             method="GET",
             endpoint="/uapi/domestic-stock/v1/quotations/inquire-daily-overtimeprice",
             tr_id=tr_id,
-            params=params
+            params=params,
+            priority=priority
         )
 
     async def get_top_movers(
         self,
         market: str = "0000",
         sort_type: str = "0",
-        count: int = 30
+        count: int = 30,
+        priority: str = "normal"
     ) -> Dict[str, Any]:
         """
         등락률 순위 조회 (실시간)
@@ -1107,6 +1221,7 @@ class KISClient:
                 - "2": 시가대비상승율
                 - "3": 시가대비하락율
             count: 조회 건수 (최대 30건)
+            priority: 우선순위 ("high"=사용자 요청, "normal"=일반, "low"=배치 작업)
 
         Returns:
             등락률 순위 데이터 (JSON)
@@ -1156,13 +1271,15 @@ class KISClient:
             method="GET",
             endpoint="/uapi/domestic-stock/v1/ranking/fluctuation",
             tr_id=tr_id,
-            params=params
+            params=params,
+            priority=priority
         )
 
     async def get_financial_ratios(
         self,
         stock_code: str,
-        div_cls_code: str = "0"
+        div_cls_code: str = "0",
+        priority: str = "normal"
     ) -> Dict[str, Any]:
         """
         재무비율 조회 (TR_ID: FHKST66430300)
@@ -1170,6 +1287,7 @@ class KISClient:
         Args:
             stock_code: 종목코드 (6자리)
             div_cls_code: 분류코드 (0: 년, 1: 분기)
+            priority: 우선순위 ("high"=사용자 요청, "normal"=일반, "low"=배치 작업)
 
         Returns:
             {
@@ -1214,15 +1332,17 @@ class KISClient:
             method="GET",
             endpoint="/uapi/domestic-stock/v1/finance/financial-ratio",
             tr_id=tr_id,
-            params=params
+            params=params,
+            priority=priority
         )
 
-    async def get_product_info(self, stock_code: str) -> Dict[str, Any]:
+    async def get_product_info(self, stock_code: str, priority: str = "normal") -> Dict[str, Any]:
         """
         상품 기본정보 조회 (TR_ID: CTPF1604R)
 
         Args:
             stock_code: 종목코드 (6자리)
+            priority: 우선순위 ("high"=사용자 요청, "normal"=일반, "low"=배치 작업)
 
         Returns:
             {
@@ -1256,7 +1376,8 @@ class KISClient:
             method="GET",
             endpoint="/uapi/domestic-stock/v1/quotations/search-info",
             tr_id=tr_id,
-            params=params
+            params=params,
+            priority=priority
         )
 
     async def close(self):

@@ -1,14 +1,21 @@
 """
-뉴스 벡터 검색 모듈
+뉴스 벡터 검색 모듈 (AsyncIO 완전 재설계)
 
 FAISS에서 유사한 과거 뉴스를 검색하고, 해당 뉴스의 주가 변동률을 조회합니다.
+
+설계 원칙:
+- Singleton 패턴으로 단일 인스턴스 보장
+- 완전 비동기 (async/await)
+- ModelLoadLock으로 PyTorch 동시성 제어
+- 초기화 시 FAISS 인덱스 한 번만 로드
+- CPU 집약 작업은 executor로 분리
 """
 import logging
 import os
 import pickle
+import asyncio
 from typing import List, Dict, Any, Optional
-from datetime import datetime
-import threading
+from datetime import datetime, timedelta
 
 import faiss
 import numpy as np
@@ -18,36 +25,64 @@ from backend.config import settings
 from backend.llm.embedder import get_news_embedder
 from backend.db.models.news import NewsArticle
 from backend.db.models.match import NewsStockMatch
+from backend.llm.model_lock import ModelLoadLock
 
 
 logger = logging.getLogger(__name__)
 
 
 class NewsVectorSearch:
-    """뉴스 벡터 검색 클래스 - FAISS 기반"""
+    """
+    뉴스 벡터 검색 클래스 - FAISS 기반 (Singleton + 완전 비동기)
+
+    Features:
+    - Singleton 패턴으로 전역 단일 인스턴스
+    - ModelLoadLock으로 PyTorch Segmentation Fault 방지
+    - 초기화 시 FAISS 인덱스 한 번만 로드
+    - 모든 메서드 async/await
+    """
+
+    _instance: Optional['NewsVectorSearch'] = None
+    _initialized: bool = False
+
+    def __new__(cls):
+        """Singleton 패턴 구현"""
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
 
     def __init__(self):
-        """벡터 검색 초기화"""
-        self.embedder = get_news_embedder()  # 싱글톤 사용
+        """초기화 (최초 1회만 실행)"""
+        if NewsVectorSearch._initialized:
+            return
+
+        self.embedder = get_news_embedder()
         self.index_path = settings.FAISS_INDEX_PATH
         self.metadata_path = settings.FAISS_METADATA_PATH
-        self._index = None
-        self._metadata = None
-        self._lock = threading.Lock()
+        self._index: Optional[faiss.Index] = None
+        self._metadata: List[Dict[str, Any]] = []
+
+        NewsVectorSearch._initialized = True
+        logger.info("🔍 NewsVectorSearch 초기화 완료 (Singleton)")
 
     def _ensure_index_dir(self):
         """인덱스 디렉토리 생성"""
         os.makedirs(os.path.dirname(self.index_path), exist_ok=True)
         os.makedirs(os.path.dirname(self.metadata_path), exist_ok=True)
 
-    def _load_index(self):
-        """FAISS 인덱스 및 메타데이터 로드"""
-        with self._lock:
+    async def load_index(self):
+        """
+        FAISS 인덱스 및 메타데이터 로드 (ModelLoadLock 적용)
+
+        PyTorch Segmentation Fault 방지를 위해 Lock 사용
+        """
+        async with ModelLoadLock.get_lock():
             if self._index is not None:
+                logger.debug("FAISS 인덱스 이미 로드됨 (재사용)")
                 return
 
             if not os.path.exists(self.index_path) or not os.path.exists(self.metadata_path):
-                logger.warning("FAISS 인덱스가 존재하지 않습니다. 빈 인덱스로 초기화합니다.")
+                logger.warning("FAISS 인덱스 파일 없음, 빈 인덱스 초기화")
                 self._index = faiss.IndexFlatL2(settings.EMBEDDING_DIM)
                 self._metadata = []
                 return
@@ -60,32 +95,35 @@ class NewsVectorSearch:
                 with open(self.metadata_path, 'rb') as f:
                     self._metadata = pickle.load(f)
 
-                logger.info(f"FAISS 인덱스 로드 완료: {self._index.ntotal}개 벡터")
+                logger.info(f"✅ FAISS 인덱스 로드 완료: {self._index.ntotal}개 벡터")
 
             except Exception as e:
-                logger.error(f"FAISS 인덱스 로드 실패: {e}")
+                logger.error(f"❌ FAISS 인덱스 로드 실패: {e}")
                 self._index = faiss.IndexFlatL2(settings.EMBEDDING_DIM)
                 self._metadata = []
 
-    def _save_index(self):
-        """FAISS 인덱스 및 메타데이터 저장"""
-        with self._lock:
-            try:
-                self._ensure_index_dir()
+    def save_index(self):
+        """
+        FAISS 인덱스 및 메타데이터 저장
 
-                # FAISS 인덱스 저장
-                faiss.write_index(self._index, self.index_path)
+        Note: 동기 함수 (파일 I/O는 CPU-bound 작업이므로 동기 처리)
+        """
+        try:
+            self._ensure_index_dir()
 
-                # 메타데이터 저장
-                with open(self.metadata_path, 'wb') as f:
-                    pickle.dump(self._metadata, f)
+            # FAISS 인덱스 저장
+            faiss.write_index(self._index, self.index_path)
 
-                logger.info(f"FAISS 인덱스 저장 완료: {self._index.ntotal}개 벡터")
+            # 메타데이터 저장
+            with open(self.metadata_path, 'wb') as f:
+                pickle.dump(self._metadata, f)
 
-            except Exception as e:
-                logger.error(f"FAISS 인덱스 저장 실패: {e}")
+            logger.info(f"💾 FAISS 인덱스 저장 완료: {self._index.ntotal}개 벡터")
 
-    def add_embeddings(
+        except Exception as e:
+            logger.error(f"❌ FAISS 인덱스 저장 실패: {e}")
+
+    async def add_embeddings(
         self,
         news_ids: List[int],
         embeddings: List[List[float]],
@@ -93,23 +131,23 @@ class NewsVectorSearch:
         published_timestamps: List[int],
     ) -> int:
         """
-        임베딩을 FAISS 인덱스에 추가합니다.
+        임베딩을 FAISS 인덱스에 추가 (비동기)
 
         Args:
             news_ids: 뉴스 ID 리스트
             embeddings: 임베딩 벡터 리스트
             stock_codes: 종목 코드 리스트
-            published_timestamps: 발행 시간 타임스탬프 리스트
+            published_timestamps: 발행 시각 (Unix timestamp) 리스트
 
         Returns:
-            추가된 벡터 개수
+            추가된 벡터 수
         """
         if len(news_ids) != len(embeddings) != len(stock_codes) != len(published_timestamps):
-            logger.error("입력 리스트 길이가 일치하지 않습니다")
+            logger.error("입력 리스트 길이 불일치")
             return 0
 
         try:
-            self._load_index()
+            await self.load_index()  # ← Lock으로 보호
 
             # numpy 배열로 변환
             embeddings_np = np.array(embeddings, dtype=np.float32)
@@ -118,32 +156,32 @@ class NewsVectorSearch:
             self._index.add(embeddings_np)
 
             # 메타데이터 추가
-            for i in range(len(news_ids)):
+            for news_id, stock_code, timestamp in zip(news_ids, stock_codes, published_timestamps):
                 self._metadata.append({
-                    "news_article_id": news_ids[i],
-                    "stock_code": stock_codes[i],
-                    "published_timestamp": published_timestamps[i],
+                    "news_article_id": news_id,
+                    "stock_code": stock_code,
+                    "published_at": timestamp,
                 })
 
             # 저장
-            self._save_index()
+            self.save_index()
 
-            logger.info(f"FAISS에 {len(news_ids)}개 벡터 추가 완료")
+            logger.info(f"✅ FAISS 인덱스에 {len(news_ids)}개 벡터 추가")
             return len(news_ids)
 
         except Exception as e:
-            logger.error(f"FAISS 벡터 추가 실패: {e}")
+            logger.error(f"❌ 임베딩 추가 실패: {e}")
             return 0
 
-    def get_indexed_news_ids(self) -> set:
+    async def get_indexed_news_ids(self) -> set:
         """
-        FAISS에 이미 인덱싱된 뉴스 ID 목록을 반환합니다.
+        FAISS에 이미 인덱싱된 뉴스 ID 목록 반환 (비동기)
 
         Returns:
             인덱싱된 뉴스 ID 집합
         """
         try:
-            self._load_index()
+            await self.load_index()  # ← Lock으로 보호
 
             if not self._metadata:
                 return set()
@@ -151,10 +189,10 @@ class NewsVectorSearch:
             return set(meta["news_article_id"] for meta in self._metadata)
 
         except Exception as e:
-            logger.error(f"인덱싱된 뉴스 조회 실패: {e}")
+            logger.error(f"❌ 인덱싱된 뉴스 ID 조회 실패: {e}")
             return set()
 
-    def search_similar_news(
+    async def search_similar_news(
         self,
         news_text: str,
         stock_code: Optional[str] = None,
@@ -162,12 +200,12 @@ class NewsVectorSearch:
         similarity_threshold: float = 0.7,
     ) -> List[Dict[str, Any]]:
         """
-        유사한 과거 뉴스를 검색합니다.
+        유사한 과거 뉴스 검색 (비동기)
 
         Args:
             news_text: 검색할 뉴스 텍스트
-            stock_code: 종목 코드 (필터링용, 선택사항)
-            top_k: 반환할 최대 개수
+            stock_code: 종목 코드 필터 (None이면 전체 검색)
+            top_k: 반환할 최대 결과 수
             similarity_threshold: 유사도 임계값 (0.0 ~ 1.0)
 
         Returns:
@@ -182,83 +220,76 @@ class NewsVectorSearch:
             ]
         """
         try:
-            self._load_index()
+            await self.load_index()  # ← Lock으로 보호
 
             if self._index.ntotal == 0:
-                logger.warning("FAISS 인덱스가 비어있습니다")
+                logger.warning("FAISS 인덱스 비어있음")
                 return []
 
-            # 1. 뉴스 텍스트 임베딩
-            embedding = self.embedder.embed_text(news_text)
-            if not embedding:
-                logger.error("뉴스 임베딩 생성 실패")
-                return []
+            # 임베딩 생성 (CPU 집약적 작업이므로 executor에서 실행)
+            loop = asyncio.get_event_loop()
+            query_embedding = await loop.run_in_executor(
+                None, self.embedder.embed_text, news_text
+            )
+            query_vector = np.array([query_embedding], dtype=np.float32)
 
-            # numpy 배열로 변환
-            query_vector = np.array([embedding], dtype=np.float32)
+            # FAISS 검색
+            search_k = top_k * 10 if stock_code else top_k
+            logger.debug(f"FAISS 검색 시작: query_vector shape={query_vector.shape}, k={search_k}")
+            distances, indices = self._index.search(query_vector, search_k)
+            logger.debug(f"FAISS 검색 완료: found {len(indices[0])} items")
 
-            # 2. FAISS 검색 (L2 거리)
-            # 종목 코드 필터링을 위해 여유있게 검색
-            search_k = top_k * 10 if stock_code else top_k * 2
-            distances, indices = self._index.search(query_vector, min(search_k, self._index.ntotal))
-
-            # 3. 결과 파싱
-            similar_news = []
-
-            for i, (distance, idx) in enumerate(zip(distances[0], indices[0])):
-                if idx == -1:  # 유효하지 않은 인덱스
-                    continue
-
-                # 메타데이터 조회
-                if idx >= len(self._metadata):
+            # 결과 필터링 및 변환
+            results = []
+            for dist, idx in zip(distances[0], indices[0]):
+                if idx < 0 or idx >= len(self._metadata):
                     continue
 
                 meta = self._metadata[idx]
 
-                # 종목 코드 필터링
+                # 종목 코드 필터
                 if stock_code and meta["stock_code"] != stock_code:
                     continue
 
-                # L2 거리를 코사인 유사도로 변환
-                # L2 거리가 작을수록 유사함
-                # 유사도 = 1 / (1 + L2_distance)
-                similarity = 1 / (1 + float(distance))
+                # 유사도 계산 (L2 distance -> cosine similarity 근사)
+                similarity = 1 / (1 + dist)
 
-                if similarity >= similarity_threshold:
-                    similar_news.append({
-                        "news_id": meta["news_article_id"],
-                        "similarity": round(similarity, 4),
-                        "stock_code": meta["stock_code"],
-                        "published_at": meta["published_timestamp"],
-                    })
+                if similarity < similarity_threshold:
+                    continue
 
-                # top_k개만 반환
-                if len(similar_news) >= top_k:
+                results.append({
+                    "news_id": meta["news_article_id"],
+                    "similarity": round(similarity, 4),
+                    "stock_code": meta["stock_code"],
+                    "published_at": meta["published_at"],
+                })
+
+                if len(results) >= top_k:
                     break
 
-            logger.info(f"유사 뉴스 검색 완료: {len(similar_news)}건 (임계값: {similarity_threshold})")
-            return similar_news
+            logger.debug(f"🔍 유사 뉴스 검색 완료: {len(results)}건")
+            return results
 
         except Exception as e:
-            logger.error(f"벡터 검색 실패: {e}", exc_info=True)
+            logger.error(f"❌ 유사 뉴스 검색 실패: {e}")
             return []
 
-    def get_news_with_price_changes(
+    async def get_news_with_price_changes(
         self,
         news_text: str,
         stock_code: Optional[str] = None,
-        db: Session = None,
+        db: Optional[Session] = None,
         top_k: int = 5,
         similarity_threshold: float = 0.7,
     ) -> List[Dict[str, Any]]:
         """
-        유사 뉴스와 해당 뉴스의 주가 변동률을 함께 조회합니다.
+        유사 뉴스와 해당 뉴스의 주가 변동률 함께 조회 (비동기)
 
         Args:
             news_text: 검색할 뉴스 텍스트
-            stock_code: 종목 코드 (필터링용)
-            db: 데이터베이스 세션
-            top_k: 반환할 최대 개수
+            stock_code: 종목 코드 필터
+            db: DB 세션
+            top_k: 반환할 최대 결과 수
             similarity_threshold: 유사도 임계값
 
         Returns:
@@ -282,73 +313,90 @@ class NewsVectorSearch:
                 ...
             ]
         """
-        # 1. 유사 뉴스 검색
-        similar_news = self.search_similar_news(
-            news_text=news_text,
-            stock_code=stock_code,
-            top_k=top_k,
-            similarity_threshold=similarity_threshold,
-        )
-
-        if not similar_news or not db:
-            return []
-
-        # 2. 뉴스 상세 정보 및 주가 변동률 조회
-        enriched_news = []
-
-        for news in similar_news:
-            news_id = news["news_id"]
-
-            # 뉴스 정보 조회
-            news_article = db.query(NewsArticle).filter(NewsArticle.id == news_id).first()
-            if not news_article:
-                continue
-
-            # 주가 변동률 조회
-            match = (
-                db.query(NewsStockMatch)
-                .filter(
-                    NewsStockMatch.news_id == news_id,
-                    NewsStockMatch.stock_code == news["stock_code"]
-                )
-                .first()
+        try:
+            # 유사 뉴스 검색
+            similar_news = await self.search_similar_news(
+                news_text=news_text,
+                stock_code=stock_code,
+                top_k=top_k,
+                similarity_threshold=similarity_threshold,
             )
 
-            price_changes = {
-                "1d": match.price_change_1d if match else None,
-                "2d": match.price_change_2d if match else None,
-                "3d": match.price_change_3d if match else None,
-                "5d": match.price_change_5d if match else None,
-                "10d": match.price_change_10d if match else None,
-                "20d": match.price_change_20d if match else None,
-            }
+            if not similar_news or not db:
+                return similar_news
 
-            enriched_news.append({
-                "news_id": news_id,
-                "similarity": news["similarity"],
-                "news_title": news_article.title,
-                "news_content": news_article.content[:200] + "...",  # 요약
-                "stock_code": news["stock_code"],
-                "published_at": news_article.published_at,
-                "price_changes": price_changes,
-            })
+            # DB에서 상세 정보 및 주가 변동률 조회
+            result = []
+            for news in similar_news:
+                news_id = news["news_id"]
 
-        logger.info(f"유사 뉴스 + 주가 변동률 조회 완료: {len(enriched_news)}건")
-        return enriched_news
+                # 뉴스 상세 정보
+                news_article = db.query(NewsArticle).filter(NewsArticle.id == news_id).first()
+                if not news_article:
+                    continue
+
+                # 주가 변동률 조회
+                match = (
+                    db.query(NewsStockMatch)
+                    .filter(NewsStockMatch.news_article_id == news_id)
+                    .first()
+                )
+
+                price_changes = {}
+                if match:
+                    price_changes = {
+                        "1d": match.price_change_1d,
+                        "2d": match.price_change_2d,
+                        "3d": match.price_change_3d,
+                        "5d": match.price_change_5d,
+                        "10d": match.price_change_10d,
+                        "20d": match.price_change_20d,
+                    }
+                else:
+                    price_changes = {
+                        "1d": None,
+                        "2d": None,
+                        "3d": None,
+                        "5d": None,
+                        "10d": None,
+                        "20d": None,
+                    }
+
+                result.append({
+                    "news_id": news_id,
+                    "similarity": news["similarity"],
+                    "news_title": news_article.title,
+                    "news_content": news_article.content,
+                    "stock_code": news_article.stock_code,
+                    "published_at": news_article.published_at,
+                    "price_changes": price_changes,
+                })
+
+            logger.debug(f"📊 주가 변동률 포함 검색 완료: {len(result)}건")
+            return result
+
+        except Exception as e:
+            logger.error(f"❌ 주가 변동률 조회 실패: {e}")
+            return []
 
 
-# 싱글톤 인스턴스
-_vector_search: Optional[NewsVectorSearch] = None
+# Singleton 인스턴스
+_vector_search_instance: Optional[NewsVectorSearch] = None
 
 
-def get_vector_search() -> NewsVectorSearch:
+async def get_vector_search() -> NewsVectorSearch:
     """
-    NewsVectorSearch 싱글톤 인스턴스를 반환합니다.
+    NewsVectorSearch Singleton 인스턴스 반환 (비동기)
+
+    최초 호출 시 FAISS 인덱스를 로드합니다.
 
     Returns:
         NewsVectorSearch 인스턴스
     """
-    global _vector_search
-    if _vector_search is None:
-        _vector_search = NewsVectorSearch()
-    return _vector_search
+    global _vector_search_instance
+
+    if _vector_search_instance is None:
+        _vector_search_instance = NewsVectorSearch()
+        await _vector_search_instance.load_index()  # 초기 로드
+
+    return _vector_search_instance

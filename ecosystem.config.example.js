@@ -9,7 +9,7 @@ module.exports = {
       interpreter: 'none',
       autorestart: true,
       watch: false,
-      max_memory_restart: '3G',  // 임베딩 모델 메모리 (~1GB) 추가
+      max_memory_restart: '5G',  // 임베딩 모델(1GB) + FAISS + 병렬 작업 여유분
       env: {
         PYTHONUNBUFFERED: '1',
         DEBUG: 'false',

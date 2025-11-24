@@ -79,7 +79,8 @@ class IndexDailyCollector:
             # API 호출
             result = await client.get_index_daily_price(
                 index_code=index_code,
-                start_date=start_date
+                start_date=start_date,
+                priority="low"
             )
 
             if result.get("rt_cd") != "0":

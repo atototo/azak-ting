@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 class NewsEmbedder:
-    """뉴스 임베딩 클래스 - 로컬 한글 임베딩 모델 사용"""
+    """뉴스 임베딩 클래스 - 로컬 한글 임베딩 모델 사용 (Thread-safe)"""
 
     def __init__(self):
         """임베더 초기화 - 모델은 싱글톤 패턴으로 한 번만 로드"""
@@ -33,6 +33,7 @@ class NewsEmbedder:
         self.embedding_dim = 768  # KoSimCSE-roberta의 차원
         self._tokenizer = None
         self._model = None
+        self._inference_lock = threading.Lock()  # PyTorch 동시 추론 방지
 
     @property
     def tokenizer(self):
@@ -67,42 +68,47 @@ class NewsEmbedder:
         """
         텍스트를 로컬 임베딩 모델로 벡터화합니다.
 
+        Thread-safe: PyTorch 모델 동시 추론 방지를 위해 Lock 사용
+
         Args:
             text: 임베딩할 텍스트
 
         Returns:
             768차원 임베딩 벡터 또는 None (실패 시)
         """
-        try:
-            # 토크나이징
-            encoded_input = self.tokenizer(
-                text,
-                padding=True,
-                truncation=True,
-                max_length=512,
-                return_tensors='pt'
-            )
+        with self._inference_lock:  # PyTorch 동시 추론 방지
+            try:
+                # 토크나이징
+                encoded_input = self.tokenizer(
+                    text,
+                    padding=True,
+                    truncation=True,
+                    max_length=512,
+                    return_tensors='pt'
+                )
 
-            # 임베딩 생성 (gradient 계산 비활성화)
-            with torch.no_grad():
-                model_output = self.model(**encoded_input)
+                # 임베딩 생성 (gradient 계산 비활성화)
+                with torch.no_grad():
+                    logger.debug(f"PyTorch 추론 시작: {len(text)}자")
+                    model_output = self.model(**encoded_input)
+                    logger.debug("PyTorch 추론 완료")
 
-            # Mean pooling
-            embedding = self._mean_pooling(model_output, encoded_input['attention_mask'])
+                # Mean pooling
+                embedding = self._mean_pooling(model_output, encoded_input['attention_mask'])
 
-            # 정규화 (L2 normalization)
-            embedding = torch.nn.functional.normalize(embedding, p=2, dim=1)
+                # 정규화 (L2 normalization)
+                embedding = torch.nn.functional.normalize(embedding, p=2, dim=1)
 
-            # numpy 배열로 변환 후 리스트로 반환
-            embedding_list = embedding.cpu().numpy()[0].tolist()
+                # numpy 배열로 변환 후 리스트로 반환
+                embedding_list = embedding.cpu().numpy()[0].tolist()
 
-            logger.debug(f"임베딩 생성 완료: {len(embedding_list)}차원")
+                logger.debug(f"임베딩 생성 완료: {len(embedding_list)}차원")
 
-            return embedding_list
+                return embedding_list
 
-        except Exception as e:
-            logger.error(f"임베딩 생성 실패: {e}")
-            return None
+            except Exception as e:
+                logger.error(f"임베딩 생성 실패: {e}")
+                return None
 
     def embed_batch(self, texts: List[str]) -> List[Optional[List[float]]]:
         """

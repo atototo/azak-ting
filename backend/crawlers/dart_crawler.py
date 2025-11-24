@@ -7,7 +7,7 @@ DART Open API 사용: https://opendart.fss.or.kr/
 import logging
 from typing import List, Optional, Dict
 from datetime import datetime, timedelta
-import requests
+import httpx
 
 from backend.crawlers.base_crawler import NewsArticleData
 from backend.config import settings
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class DartCrawler:
-    """DART 공시 크롤러"""
+    """DART 공시 크롤러 (비동기)"""
 
     BASE_URL = "https://opendart.fss.or.kr/api"
 
@@ -39,14 +39,29 @@ class DartCrawler:
             api_key: DART API 키 (None이면 설정에서 로드)
         """
         self.api_key = api_key or getattr(settings, "DART_API_KEY", None)
+        self._client: Optional[httpx.AsyncClient] = None
 
         if not self.api_key:
             logger.warning("DART API 키가 설정되지 않았습니다. 공시 크롤링을 사용하려면 DART_API_KEY 환경변수를 설정하세요.")
             logger.warning("API 키 발급: https://opendart.fss.or.kr/")
 
-    def _make_request(self, endpoint: str, params: Dict) -> Optional[Dict]:
+    async def _get_client(self) -> httpx.AsyncClient:
         """
-        DART API 요청
+        비동기 HTTP 클라이언트를 반환합니다.
+
+        Returns:
+            httpx.AsyncClient 객체
+        """
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=10.0,
+                follow_redirects=True,
+            )
+        return self._client
+
+    async def _make_request(self, endpoint: str, params: Dict) -> Optional[Dict]:
+        """
+        DART API 요청 (비동기)
 
         Args:
             endpoint: API 엔드포인트
@@ -63,7 +78,8 @@ class DartCrawler:
         params["crtfc_key"] = self.api_key
 
         try:
-            response = requests.get(url, params=params, timeout=10)
+            client = await self._get_client()
+            response = await client.get(url, params=params)
             response.raise_for_status()
 
             data = response.json()
@@ -76,11 +92,14 @@ class DartCrawler:
 
             return data
 
-        except requests.RequestException as e:
+        except httpx.HTTPStatusError as e:
+            logger.error(f"DART API HTTP 오류: {e}")
+            return None
+        except httpx.RequestError as e:
             logger.error(f"DART API 요청 실패: {e}")
             return None
 
-    def fetch_disclosures(
+    async def fetch_disclosures(
         self,
         corp_code: Optional[str] = None,
         stock_code: Optional[str] = None,
@@ -89,7 +108,7 @@ class DartCrawler:
         disclosure_type: Optional[str] = None,
     ) -> List[NewsArticleData]:
         """
-        특정 기업의 공시 목록을 가져옵니다.
+        특정 기업의 공시 목록을 가져옵니다 (비동기).
 
         Args:
             corp_code: 기업 고유번호 (8자리) - 선택사항
@@ -124,7 +143,7 @@ class DartCrawler:
         if disclosure_type:
             params["pblntf_ty"] = disclosure_type
 
-        data = self._make_request("list.json", params)
+        data = await self._make_request("list.json", params)
 
         if not data or "list" not in data:
             return []
@@ -170,9 +189,9 @@ class DartCrawler:
         logger.info(f"{corp_name} 공시 수집 완료: {len(disclosures)}건")
         return disclosures
 
-    def search_company_by_stock_code(self, stock_code: str) -> Optional[str]:
+    async def search_company_by_stock_code(self, stock_code: str) -> Optional[str]:
         """
-        주식 코드로 기업 고유번호(corp_code)를 검색합니다.
+        주식 코드로 기업 고유번호(corp_code)를 검색합니다 (비동기).
 
         Args:
             stock_code: 주식 코드 (6자리)
@@ -184,14 +203,14 @@ class DartCrawler:
             "stock_code": stock_code,
         }
 
-        data = self._make_request("company.json", params)
+        data = await self._make_request("company.json", params)
 
         if not data:
             return None
 
         return data.get("corp_code")
 
-    def fetch_disclosures_by_stock_code(
+    async def fetch_disclosures_by_stock_code(
         self,
         stock_code: str,
         start_date: Optional[datetime] = None,
@@ -199,7 +218,7 @@ class DartCrawler:
         disclosure_type: Optional[str] = None,
     ) -> List[NewsArticleData]:
         """
-        주식 코드로 공시를 검색합니다.
+        주식 코드로 공시를 검색합니다 (비동기).
 
         Args:
             stock_code: 주식 코드 (6자리)
@@ -211,9 +230,22 @@ class DartCrawler:
             공시 리스트
         """
         # 직접 주식 코드로 공시 조회
-        return self.fetch_disclosures(
+        return await self.fetch_disclosures(
             stock_code=stock_code,
             start_date=start_date,
             end_date=end_date,
             disclosure_type=disclosure_type,
         )
+
+    async def close(self) -> None:
+        """HTTP 클라이언트를 닫습니다."""
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+
+    async def __aenter__(self):
+        """Async context manager 진입"""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager 종료"""
+        await self.close()

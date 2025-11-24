@@ -3,6 +3,7 @@
 
 키워드로 네이버 뉴스를 검색합니다.
 """
+import asyncio
 import logging
 from typing import List, Optional
 from datetime import datetime
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 class NaverNewsSearchCrawler(BaseNewsCrawler):
-    """네이버 뉴스 검색 크롤러"""
+    """네이버 뉴스 검색 크롤러 (비동기)"""
 
     # 네이버 검색 URL
     BASE_URL = "https://search.naver.com/search.naver"
@@ -149,7 +150,7 @@ class NaverNewsSearchCrawler(BaseNewsCrawler):
             logger.warning(f"날짜 파싱 실패: {date_str} ({e}), 현재 시간 사용")
             return datetime.now()
 
-    def search_news(
+    async def search_news(
         self,
         query: str,
         start_date: Optional[datetime] = None,
@@ -157,7 +158,7 @@ class NaverNewsSearchCrawler(BaseNewsCrawler):
         limit: int = 100,
     ) -> List[NewsArticleData]:
         """
-        네이버 뉴스를 검색합니다.
+        네이버 뉴스를 검색합니다 (비동기).
 
         Args:
             query: 검색 키워드
@@ -174,9 +175,9 @@ class NaverNewsSearchCrawler(BaseNewsCrawler):
         logger.info(f"네이버 뉴스 검색 시작: query={query}, limit={limit}")
 
         while len(news_list) < limit:
-            # 페이지 HTML 가져오기
+            # 페이지 HTML 가져오기 (비동기)
             url = self._get_search_url(query, page, start_date, end_date)
-            html = self.fetch_html(url)
+            html = await self.fetch_html(url)
 
             if not html:
                 logger.warning(f"페이지 {page} 가져오기 실패")
@@ -209,17 +210,15 @@ class NaverNewsSearchCrawler(BaseNewsCrawler):
                 logger.warning("최대 페이지 수(10) 도달")
                 break
 
-            # Rate limiting
-            import time
-
-            time.sleep(0.5)
+            # Rate limiting (비동기)
+            await asyncio.sleep(0.5)
 
         logger.info(f"네이버 뉴스 검색 완료: {len(news_list)}건")
         return news_list
 
-    def fetch_news(self, limit: int = 10) -> List[NewsArticleData]:
+    async def fetch_news(self, limit: int = 10) -> List[NewsArticleData]:
         """
-        네이버 뉴스를 가져옵니다. (BaseNewsCrawler 추상 메서드 구현)
+        네이버 뉴스를 가져옵니다 (비동기). (BaseNewsCrawler 추상 메서드 구현)
 
         Args:
             limit: 가져올 뉴스 개수
@@ -228,4 +227,4 @@ class NaverNewsSearchCrawler(BaseNewsCrawler):
             NewsArticleData 리스트
         """
         # 기본적으로 최신 뉴스를 검색
-        return self.search_news(query="증권", limit=limit)
+        return await self.search_news(query="증권", limit=limit)

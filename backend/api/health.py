@@ -4,6 +4,7 @@ Health Check API
 시스템 상태 및 통계 정보를 제공하는 API
 """
 import logging
+import asyncio
 from typing import Dict, Any
 from datetime import datetime
 
@@ -41,8 +42,8 @@ def check_postgres() -> Dict[str, Any]:
 def check_faiss() -> Dict[str, Any]:
     """FAISS 인덱스 상태 확인"""
     try:
-        vector_search = get_vector_search()
-        indexed_ids = vector_search.get_indexed_news_ids()
+        vector_search = asyncio.run(get_vector_search())
+        indexed_ids = asyncio.run(vector_search.get_indexed_news_ids())
         count = len(indexed_ids)
 
         return {

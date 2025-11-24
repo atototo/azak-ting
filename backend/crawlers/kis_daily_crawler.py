@@ -52,7 +52,8 @@ class KISDailyCrawler:
             response = await client.get_daily_prices(
                 stock_code=stock_code,
                 start_date=start_date,
-                end_date=end_date
+                end_date=end_date,
+                priority="low"
             )
 
             # 응답 파싱

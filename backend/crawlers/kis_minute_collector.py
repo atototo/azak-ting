@@ -20,19 +20,23 @@ logger = logging.getLogger(__name__)
 class MinutePriceCollector:
     """1분봉 데이터 수집기"""
 
-    def __init__(self, batch_size: int = 10):
+    def __init__(self, batch_size: int = 50, max_concurrent: int = 3):
         """
         Args:
-            batch_size: 배치 크기 (동시 수집 종목 수)
+            batch_size: 배치 크기 (한 번에 처리할 종목 수)
+            max_concurrent: 최대 동시 API 호출 수
+                          AsyncIOScheduler 환경에서 동시 연결 제한
         """
         self.batch_size = batch_size
+        self.max_concurrent = max_concurrent
+        self.semaphore = asyncio.Semaphore(max_concurrent)
         self.collected_count = 0
         self.failed_count = 0
         self.skipped_count = 0
 
     async def collect_minute_data(self, stock_code: str) -> Dict[str, Any]:
         """
-        단일 종목의 1분봉 데이터 수집
+        단일 종목의 1분봉 데이터 수집 (Semaphore로 동시 실행 제한)
 
         Args:
             stock_code: 종목 코드
@@ -40,63 +44,64 @@ class MinutePriceCollector:
         Returns:
             수집 결과 딕셔너리
         """
-        try:
-            # KIS Client
-            client = await get_kis_client()
+        async with self.semaphore:  # 동시 실행 제한
+            try:
+                # KIS Client
+                client = await get_kis_client()
 
-            # 현재 시각을 start_time으로 사용 (최신 데이터 조회)
-            from datetime import datetime
-            current_time = datetime.now().strftime("%H%M%S")
-            logger.debug(f"📌 {stock_code}: 현재 시각 {current_time}부터 조회")
+                # 현재 시각을 start_time으로 사용 (최신 데이터 조회)
+                from datetime import datetime
+                current_time = datetime.now().strftime("%H%M%S")
+                logger.debug(f"📌 {stock_code}: 현재 시각 {current_time}부터 조회")
 
-            # 1분봉 조회
-            result = await client.get_minute_prices(stock_code=stock_code, start_time=current_time)
+                # 1분봉 조회 (배치 작업이므로 low priority)
+                result = await client.get_minute_prices(stock_code=stock_code, start_time=current_time, priority="low")
 
-            # output2 확인
-            output2 = result.get("output2", [])
+                # output2 확인
+                output2 = result.get("output2", [])
 
-            # 디버그 로그 (필요시에만 활성화)
-            logger.debug(f"🔍 {stock_code}: API 응답 키 = {list(result.keys())}")
-            logger.debug(f"🔍 {stock_code}: output2 데이터 {len(output2)}건 수신")
-            if output2:
-                logger.debug(f"🔍 {stock_code}: 샘플 데이터 = {output2[0]}")
-            else:
-                logger.warning(f"⚠️  {stock_code}: output2 데이터 없음")
-                logger.debug(f"🔍 {stock_code}: 전체 API 응답 = {result}")
+                # 디버그 로그 (필요시에만 활성화)
+                logger.debug(f"🔍 {stock_code}: API 응답 키 = {list(result.keys())}")
+                logger.debug(f"🔍 {stock_code}: output2 데이터 {len(output2)}건 수신")
+                if output2:
+                    logger.debug(f"🔍 {stock_code}: 샘플 데이터 = {output2[0]}")
+                else:
+                    logger.warning(f"⚠️  {stock_code}: output2 데이터 없음")
+                    logger.debug(f"🔍 {stock_code}: 전체 API 응답 = {result}")
 
-            if not output2:
-                self.skipped_count += 1
+                if not output2:
+                    self.skipped_count += 1
+                    return {
+                        "stock_code": stock_code,
+                        "status": "skipped",
+                        "saved": 0,
+                        "error": "No data"
+                    }
+
+                # DB 저장
+                saved_count = await self._save_to_db(stock_code, output2)
+
+                self.collected_count += saved_count
+                if saved_count > 0:
+                    logger.debug(f"✅ {stock_code}: {saved_count}건 저장")
+                else:
+                    logger.info(f"⏭️  {stock_code}: 0건 저장 (모두 중복 데이터)")
+
                 return {
                     "stock_code": stock_code,
-                    "status": "skipped",
-                    "saved": 0,
-                    "error": "No data"
+                    "status": "success",
+                    "saved": saved_count
                 }
 
-            # DB 저장
-            saved_count = await self._save_to_db(stock_code, output2)
-
-            self.collected_count += saved_count
-            if saved_count > 0:
-                logger.debug(f"✅ {stock_code}: {saved_count}건 저장")
-            else:
-                logger.info(f"⏭️  {stock_code}: 0건 저장 (모두 중복 데이터)")
-
-            return {
-                "stock_code": stock_code,
-                "status": "success",
-                "saved": saved_count
-            }
-
-        except Exception as e:
-            self.failed_count += 1
-            logger.error(f"❌ {stock_code}: 수집 실패 - {e}")
-            return {
-                "stock_code": stock_code,
-                "status": "failed",
-                "saved": 0,
-                "error": str(e)
-            }
+            except Exception as e:
+                self.failed_count += 1
+                logger.error(f"❌ {stock_code}: 수집 실패 - {e}")
+                return {
+                    "stock_code": stock_code,
+                    "status": "failed",
+                    "saved": 0,
+                    "error": str(e)
+                }
 
     async def _save_to_db(self, stock_code: str, data: List[Dict[str, Any]]) -> int:
         """
@@ -243,8 +248,8 @@ async def run_minute_collector():
             logger.warning("⚠️  활성 종목 없음")
             return
 
-        # 수집기 실행
-        collector = MinutePriceCollector(batch_size=10)
+        # 수집기 실행 (batch_size=50, max_concurrent=3)
+        collector = MinutePriceCollector(batch_size=50, max_concurrent=3)
         result = await collector.collect_all_stocks(stock_codes)
 
         logger.info(f"✅ 1분봉 수집 완료: {result['total_saved']}건")
@@ -269,5 +274,5 @@ def get_minute_collector() -> MinutePriceCollector:
     """
     global _collector
     if _collector is None:
-        _collector = MinutePriceCollector(batch_size=10)
+        _collector = MinutePriceCollector(batch_size=50, max_concurrent=3)
     return _collector

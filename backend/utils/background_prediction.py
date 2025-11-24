@@ -5,6 +5,7 @@
 """
 import logging
 import threading
+import asyncio
 from typing import List, Optional
 from datetime import datetime, timedelta
 
@@ -59,17 +60,17 @@ def _generate_predictions_worker(news_id: int, model_ids: List[int], task_id: Op
             return
 
         predictor = get_predictor()
-        vector_search = get_vector_search()
+        vector_search = asyncio.run(get_vector_search())
 
         # 유사 뉴스 검색
         news_text = f"{news.title}\n{news.content}"
-        similar_news = vector_search.get_news_with_price_changes(
+        similar_news = asyncio.run(vector_search.get_news_with_price_changes(
             news_text=news_text,
             stock_code=news.stock_code,
             db=db,
             top_k=5,
             similarity_threshold=0.5,
-        )
+        ))
 
         current_news_data = {
             "title": news.title,
