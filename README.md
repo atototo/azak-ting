@@ -3,6 +3,7 @@
 > **AI가 당신의 투자 판단을 도와주는 스마트 주식 분석 플랫폼**
 
 ## 🎯 Azak은 무엇인가요?
+<img width="1162" height="799" alt="image" src="https://github.com/user-attachments/assets/905665a5-7b45-46cc-825a-631976b8b216" />
 
 Azak(아작)은 **복잡한 주식 시장 데이터를 AI가 자동으로 분석하여 투자 인사이트를 제공하는 서비스**입니다. 매일 쏟아지는 수많은 시장 정보, 공시, 주가 데이터를 일일이 확인할 시간이 없는 투자자들을 위해, AI가 24시간 시장을 모니터링하고 핵심 정보를 정리해드립니다.
 
@@ -135,6 +136,9 @@ Segmentation Fault 해결 및 스케줄러 개선:
 
 ### 1. 📊 종합 데이터 분석
 **"주가만 보는 게 아니라, 시장 전체를 봅니다"**
+<img width="1133" height="694" alt="image" src="https://github.com/user-attachments/assets/771bd0eb-b172-4814-8b00-b8551f2e2e8e" />
+
+<img width="1103" height="892" alt="image" src="https://github.com/user-attachments/assets/8f55eba9-ba27-4ae2-86a1-fa363e54adbb" />
 
 Azak은 6가지 데이터 소스를 통합하여 종목을 입체적으로 분석합니다:
 - **주가·거래량**: 실시간 가격 및 거래 흐름 추적
@@ -148,6 +152,7 @@ Azak은 6가지 데이터 소스를 통합하여 종목을 입체적으로 분�
 
 ### 2. 🤖 멀티 AI 모델 분석
 **"하나의 AI만 믿지 않습니다"**
+<img width="2242" height="2882" alt="image" src="https://github.com/user-attachments/assets/7a972ebd-6fb3-44f7-8845-cf161201ac5c" />
 
 - GPT-4o와 DeepSeek-V3 등 **여러 AI 모델이 동시에 분석**
 - 의견이 일치하면 신뢰도 상승, 의견이 갈리면 더 신중한 판단 가능
