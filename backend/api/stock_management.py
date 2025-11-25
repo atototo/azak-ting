@@ -6,10 +6,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 import logging
+import re
+import asyncio
 
-from backend.db.session import get_db
+from backend.db.session import get_db, SessionLocal
 from backend.db.models.stock import Stock
 from backend.services.stock_analysis_service import trigger_initial_analysis
 
@@ -21,9 +23,18 @@ router = APIRouter(prefix="/api/admin/stocks", tags=["stock-management"])
 # Request/Response Models
 class StockCreate(BaseModel):
     """종목 생성 요청"""
-    code: str = Field(..., min_length=6, max_length=6, description="종목 코드 (6자리)")
+    code: str = Field(..., min_length=6, max_length=6, description="종목 코드 (6자리, 숫자 또는 영문 대문자)")
     name: str = Field(..., min_length=1, max_length=100, description="종목명")
     priority: int = Field(default=5, ge=1, le=5, description="우선순위 (1~5)")
+
+    @field_validator('code')
+    @classmethod
+    def validate_code(cls, v: str) -> str:
+        """종목 코드 유효성 검사: 6자리 숫자 또는 영문 대문자"""
+        v = v.upper()  # 자동으로 대문자 변환
+        if not re.match(r'^[0-9A-Z]{6}$', v):
+            raise ValueError('종목 코드는 6자리 숫자 또는 영문 대문자여야 합니다 (예: 005930, 0126Z0)')
+        return v
 
 
 class StockUpdate(BaseModel):
@@ -85,15 +96,27 @@ async def create_stock(stock: StockCreate, db: Session = Depends(get_db)):
 
     logger.info(f"✅ Stock saved: {stock.code}")
 
-    # 즉시 초기 분석 실행 (신규)
-    try:
-        await trigger_initial_analysis(stock.code, db)
-        logger.info(f"✅ Initial analysis triggered for {stock.code}")
-    except Exception as e:
-        logger.error(f"❌ Initial analysis failed for {stock.code}: {e}")
-        # 실패해도 종목 등록은 유지
+    # 백그라운드에서 초기 분석 실행 (비동기, 응답 즉시 반환)
+    asyncio.create_task(_run_initial_analysis_background(stock.code))
+    logger.info(f"🚀 Initial analysis scheduled for {stock.code}")
 
     return new_stock
+
+
+async def _run_initial_analysis_background(stock_code: str):
+    """
+    백그라운드에서 초기 분석을 실행합니다.
+
+    새로운 DB 세션을 생성하여 안전하게 처리합니다.
+    """
+    db = SessionLocal()
+    try:
+        await trigger_initial_analysis(stock_code, db)
+        logger.info(f"✅ Background initial analysis completed for {stock_code}")
+    except Exception as e:
+        logger.error(f"❌ Background initial analysis failed for {stock_code}: {e}", exc_info=True)
+    finally:
+        db.close()
 
 
 @router.get("", response_model=StockListResponse)

@@ -980,7 +980,8 @@ def build_adaptive_analysis_prompt(context: Dict[str, Any]) -> str:
             prompt += f"{idx}. {title} ({pub_date})\n"
 
     # 현재가 추출 (목표가 계산용)
-    base_price = context.get("current_price", {}).get("current_price", 0)
+    current_price_data = context.get("current_price") or {}
+    base_price = current_price_data.get("current_price", 0) if isinstance(current_price_data, dict) else 0
 
     prompt += f"""
 
@@ -1189,7 +1190,8 @@ def build_unified_prompt(context: Dict[str, Any]) -> str:
                 prompt += f"{idx}. {direction_emoji} {direction.upper()} ({impact}): {reasoning[:100]}...\n"
 
     # 현재가 추출 (목표가 계산용)
-    base_price = context.get("current_price", {}).get("current_price", 0)
+    current_price_data = context.get("current_price") or {}
+    base_price = current_price_data.get("current_price", 0) if isinstance(current_price_data, dict) else 0
 
     prompt += f"""
 

@@ -265,12 +265,14 @@ async def get_stock_detail(
     특정 종목의 상세 통계 및 최신 주가를 반환합니다.
     """
     try:
-        # 종목명 조회
-        stock_mapper = get_stock_mapper()
-        stock_name = stock_mapper.get_company_name(stock_code)
+        # 종목명 조회 (DB에서 직접 조회)
+        from backend.db.models.stock import Stock
+        stock = db.query(Stock).filter(Stock.code == stock_code).first()
 
-        if not stock_name:
+        if not stock:
             raise HTTPException(status_code=404, detail="종목을 찾을 수 없습니다")
+
+        stock_name = stock.name
 
         # 뉴스 통계
         total_news = db.query(func.count(NewsArticle.id)).filter(

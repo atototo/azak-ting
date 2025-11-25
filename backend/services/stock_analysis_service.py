@@ -29,6 +29,7 @@ from backend.utils.market_time import (
     get_direction_threshold
 )
 from backend.crawlers.kis_client import KISClient
+from backend.crawlers.kis_daily_crawler import KISDailyCrawler
 from backend.services.kis_data_service import save_product_info, save_financial_ratios
 
 
@@ -76,6 +77,21 @@ async def trigger_initial_analysis(stock_code: str, db: Session):
         if financial_ratios_data:
             save_financial_ratios(db, stock_code, financial_ratios_data)
             logger.info(f"✅ Saved financial ratios for {stock_code}")
+
+        # 과거 주가 데이터 수집 (최근 100일)
+        try:
+            crawler = KISDailyCrawler()
+            start_date = datetime.now() - timedelta(days=100)
+            df = await crawler.fetch_daily_prices(stock_code, start_date)
+
+            if df is not None and not df.empty:
+                saved_count = crawler.save_to_db(stock_code, df, db)
+                logger.info(f"✅ Saved {saved_count} historical price records for {stock_code}")
+            else:
+                logger.warning(f"⚠️ No historical price data available for {stock_code}")
+        except Exception as e:
+            logger.error(f"❌ Historical price collection failed for {stock_code}: {e}")
+            # 실패해도 계속 진행
 
         # 초기 리포트 생성 (통합 함수 사용)
         reports = await generate_unified_stock_report(stock_code, db)
@@ -196,7 +212,7 @@ async def generate_unified_stock_report(
                     "model": model.model_identifier,
                     "messages": messages,
                     "temperature": 0.4,
-                    "max_tokens": 4000 if model.model_type == "reasoning" else 1000,
+                    "max_tokens": 4000 if model.model_type == "reasoning" else 2000,
                 }
 
                 # 일반 모델만 response_format 사용 (reasoning 모델 제외)
@@ -860,20 +876,34 @@ def _build_summary_from_payload(
 
 
 def _extract_openrouter_json(text: str) -> str:
-    """OpenRouter 응답에서 JSON 부분만 추출."""
-    json_match = re.search(r"```json\s*(\{.*?\})\s*```", text, re.DOTALL)
-    if json_match:
-        return json_match.group(1)
+    """
+    OpenRouter 응답에서 JSON 부분만 추출.
+    중첩된 객체와 불완전한 응답도 처리.
+    """
+    if not text:
+        return text
 
-    json_match = re.search(r"```\s*(\{.*?\})\s*```", text, re.DOTALL)
+    # 1. Markdown 코드 블록에서 JSON 추출 (```json ... ``` 또는 ``` ... ```)
+    # Greedy 매칭으로 마지막 닫는 백틱까지 포함
+    json_match = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
     if json_match:
-        return json_match.group(1)
+        return json_match.group(1).strip()
 
-    json_match = re.search(r"(\{[^{]*\"overall_summary\".*\})\s*$", text, re.DOTALL)
+    # 2. 코드 블록 시작만 있고 끝이 없는 경우 (응답 truncation)
+    json_match = re.search(r"```(?:json)?\s*(\{.*)", text, re.DOTALL)
     if json_match:
-        return json_match.group(1)
+        potential_json = json_match.group(1).strip()
+        # JSON 유효성 간단 체크 - overall_summary 키가 있는지
+        if '"overall_summary"' in potential_json:
+            return potential_json
 
-    return text
+    # 3. 코드 블록 없이 직접 JSON (overall_summary로 시작하는 객체)
+    json_match = re.search(r'(\{[^{]*"overall_summary".*\})', text, re.DOTALL)
+    if json_match:
+        return json_match.group(1).strip()
+
+    # 4. fallback - 원본 반환
+    return text.strip()
 
 
 def _fetch_latest_summary(

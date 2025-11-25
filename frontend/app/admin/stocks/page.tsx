@@ -37,10 +37,9 @@ export default function AdminStocksPage() {
     try {
       setLoading(true);
 
-      // 쿼리 파라미터 구성
+      // 쿼리 파라미터 구성 (활성화 상태만)
       const params = new URLSearchParams();
       if (filterActive !== null) params.append("is_active", filterActive.toString());
-      if (searchQuery) params.append("search", searchQuery);
 
       const url = `/api/admin/stocks${params.toString() ? `?${params.toString()}` : ""}`;
       const res = await fetch(url);
@@ -62,7 +61,7 @@ export default function AdminStocksPage() {
 
   useEffect(() => {
     fetchStocks();
-  }, [filterActive, searchQuery]);
+  }, [filterActive]);
 
   // 종목 추가
   const handleAddStock = async (e: React.FormEvent) => {
@@ -156,6 +155,14 @@ export default function AdminStocksPage() {
     }
   };
 
+  // 로컬 필터링 (종목 분석 페이지와 동일한 방식)
+  const filteredStocks = stocks.filter((stock) => {
+    const matchesSearch =
+      stock.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      stock.code.includes(searchQuery.toUpperCase());
+    return matchesSearch;
+  });
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -208,11 +215,11 @@ export default function AdminStocksPage() {
                 <input
                   type="text"
                   maxLength={6}
-                  pattern="[0-9]{6}"
+                  pattern="[0-9A-Z]{6}"
                   value={newStock.code}
-                  onChange={(e) => setNewStock({ ...newStock, code: e.target.value })}
+                  onChange={(e) => setNewStock({ ...newStock, code: e.target.value.toUpperCase() })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  placeholder="예: 005930"
+                  placeholder="예: 005930, 0126Z0"
                   required
                 />
               </div>
@@ -285,13 +292,13 @@ export default function AdminStocksPage() {
           <div className="p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-gray-900">
-                종목 목록 ({stocks.length}개)
+                종목 목록 ({filteredStocks.length}개 / 전체 {stocks.length}개)
               </h2>
             </div>
 
-            {stocks.length === 0 ? (
+            {filteredStocks.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
-                <p>등록된 종목이 없습니다</p>
+                <p>{searchQuery ? "검색 결과가 없습니다" : "등록된 종목이 없습니다"}</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -313,7 +320,7 @@ export default function AdminStocksPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {stocks.map((stock) => (
+                    {filteredStocks.map((stock) => (
                       <tr key={stock.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm font-mono text-gray-900">
                           {stock.code}
