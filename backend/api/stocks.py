@@ -672,11 +672,10 @@ async def get_analysis_reports(
             start_dt = datetime.fromisoformat(start_date)
             query = query.filter(StockAnalysisSummary.last_updated >= start_dt)
 
-        if end_date:
-            # end_date는 해당 날짜의 23:59:59까지 포함하도록 처리
-            from datetime import timedelta
-            end_dt = datetime.fromisoformat(end_date) + timedelta(days=1)
-            query = query.filter(StockAnalysisSummary.last_updated < end_dt)
+        # end_date 필터는 사용하지 않음
+        # 이유: 차트 조회 시 주가 데이터의 마지막 날짜를 end_date로 전달하는데,
+        # 오늘 생성된 리포트는 아직 주가 일봉 데이터가 없어서 제외될 수 있음
+        # 대신 start_date 이후의 모든 리포트를 반환하여 최신 리포트를 포함
 
         reports = query.order_by(StockAnalysisSummary.last_updated.asc()).all()
 

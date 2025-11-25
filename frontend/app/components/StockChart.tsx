@@ -213,13 +213,12 @@ export default function StockChart({ stockCode }: StockChartProps) {
 
         // AI 리포트 데이터
         const startDate = prices.length > 0 ? prices[0].date.split('T')[0] : null;
-        const endDate = prices.length > 0 ? prices[prices.length - 1].date.split('T')[0] : null;
 
         let fetchedReports: AnalysisReport[] = [];
 
-        if (startDate && endDate) {
+        if (startDate) {
           const reportsResponse = await fetch(
-            `/api/stocks/${stockCode}/analysis-reports?start_date=${startDate}&end_date=${endDate}`
+            `/api/stocks/${stockCode}/analysis-reports?start_date=${startDate}`
           );
           if (reportsResponse.ok) {
             const reportsData = await reportsResponse.json();
@@ -233,6 +232,7 @@ export default function StockChart({ stockCode }: StockChartProps) {
 
             // Define lastDate and lastClose for calculations
             const lastDate = new Date(prices[prices.length - 1].date);
+            const lastDateStr = lastDate.toISOString().split('T')[0];
             const lastClose = prices[prices.length - 1].close;
 
             // 1. Filter reports: Show latest report per model per date
@@ -242,7 +242,8 @@ export default function StockChart({ stockCode }: StockChartProps) {
             fetchedReports.forEach(report => {
               if (!report.generated_at || !report.model_id) return;
 
-              const reportDate = new Date(report.generated_at).toISOString().split('T')[0];
+              // Extract date directly from string to avoid timezone conversion
+              const reportDate = report.generated_at.split('T')[0];
 
               if (!reportsByDate.has(reportDate)) {
                 reportsByDate.set(reportDate, new Map());
@@ -271,19 +272,23 @@ export default function StockChart({ stockCode }: StockChartProps) {
             const latestReports: AnalysisReport[] = [];
             if (filteredReports.length > 0) {
               const dates = filteredReports
-                .map(r => r.generated_at ? new Date(r.generated_at).getTime() : 0)
+                .map(r => {
+                  if (!r.generated_at) return 0;
+                  // Extract date string directly (already in local timezone from backend)
+                  return new Date(r.generated_at).getTime();
+                })
                 .filter(t => t > 0);
 
               if (dates.length > 0) {
-                const maxDate = new Date(Math.max(...dates));
-                const maxDateStr = maxDate.toISOString().split('T')[0];
-
+                const maxTimestamp = Math.max(...dates);
+                // Use the original string format to avoid timezone issues
+                const maxDateStr = filteredReports
+                  .find(r => r.generated_at && new Date(r.generated_at).getTime() === maxTimestamp)
+                  ?.generated_at?.split('T')[0] || '';
 
                 latestReports.push(...filteredReports.filter(r =>
                   r.generated_at && r.generated_at.startsWith(maxDateStr)
                 ));
-
-
               }
             }
 
@@ -299,18 +304,45 @@ export default function StockChart({ stockCode }: StockChartProps) {
               ...p,
             }));
 
-            // Add the last historical point as the starting point for all models
-            if (prices.length > 0) {
-              const lastPoint = newExtendedData[prices.length - 1];
+            // Determine the prediction start date (latest report date or last price date)
+            let predictionStartDate = lastDateStr;
+            let predictionStartPrice = lastClose;
+
+            if (latestReports.length > 0) {
+              const latestReportDate = new Date(Math.max(...latestReports
+                .map(r => r.generated_at ? new Date(r.generated_at).getTime() : 0)
+              ));
+              const latestReportDateStr = latestReportDate.toISOString().split('T')[0];
+
+              // If latest report is newer than last price data, add a point for the report date
+              if (latestReportDateStr > lastDateStr) {
+                predictionStartDate = latestReportDateStr;
+                predictionStartPrice = lastClose; // Use last known price
+
+                // Add intermediate point if needed
+                newExtendedData.push({
+                  date: predictionStartDate,
+                  open: null,
+                  high: null,
+                  low: null,
+                  close: lastClose, // Show current price
+                  volume: null,
+                });
+              }
+            }
+
+            // Add the prediction start point for all models
+            if (newExtendedData.length > 0) {
+              const startPoint = newExtendedData[newExtendedData.length - 1];
               latestReports.forEach(report => {
                 if (report.model_id) {
-                  lastPoint[`prediction_${report.model_id}`] = lastClose;
+                  startPoint[`prediction_${report.model_id}`] = predictionStartPrice;
                 }
               });
             }
 
             for (let i = 1; i <= futureDays; i++) {
-              const futureDate = new Date(lastDate);
+              const futureDate = new Date(predictionStartDate);
               futureDate.setDate(futureDate.getDate() + i);
               const dateStr = futureDate.toISOString().split('T')[0];
 
@@ -329,8 +361,8 @@ export default function StockChart({ stockCode }: StockChartProps) {
 
                 // Short Term: Day 0 -> Day 7
                 if (i <= 7 && shortTarget) {
-                  const slope = (shortTarget - lastClose) / 7;
-                  point[`prediction_${modelId}`] = lastClose + (slope * i);
+                  const slope = (shortTarget - predictionStartPrice) / 7;
+                  point[`prediction_${modelId}`] = predictionStartPrice + (slope * i);
                 }
 
                 // Medium Term: Day 7 -> Day 30
@@ -345,7 +377,9 @@ export default function StockChart({ stockCode }: StockChartProps) {
 
 
             setExtendedData(newExtendedData);
-            setFutureStartIndex(prices.length); // Index where future starts
+            // Future starts after the prediction start point (could be price data end or report date)
+            const futureIndex = predictionStartDate > lastDateStr ? prices.length + 1 : prices.length;
+            setFutureStartIndex(futureIndex);
           }
         }
       } catch (err) {
@@ -828,26 +862,35 @@ export default function StockChart({ stockCode }: StockChartProps) {
                 return null;
               }
 
-              const reportDate = new Date(report.generated_at).toISOString().split('T')[0];
-              const priceData = data.find(d => d.date.startsWith(reportDate));
+              // Extract date directly from string to avoid timezone conversion
+              const reportDate = report.generated_at.split('T')[0];
+              // extendedData에서 리포트 날짜에 해당하는 데이터 포인트 찾기
+              const chartData = extendedData.find(d => d.date.startsWith(reportDate));
 
-              if (!priceData) {
+              if (!chartData) {
+                return null;
+              }
+
+              // Y축 위치: high 값이 있으면 사용, 없으면 close 값 사용
+              const basePrice = chartData.high || chartData.close || 0;
+
+              if (basePrice === 0) {
                 return null;
               }
 
               // 마커 Y축 위치 계산 (같은 날짜의 마커들을 세로로 배치)
               const sameDateReports = reports.filter(r =>
-                r.generated_at && new Date(r.generated_at).toISOString().split('T')[0] === reportDate
+                r.generated_at && r.generated_at.split('T')[0] === reportDate
               );
               const sameDateIndex = sameDateReports.findIndex(r => r.id === report.id);
               // 간격을 좁힘 (0.03 -> 0.02) 및 시작점 조정 (1.04 -> 1.02)
-              const yPosition = priceData.high * (1.02 + (sameDateIndex * 0.02));
+              const yPosition = basePrice * (1.02 + (sameDateIndex * 0.02));
 
               return (
                 <ReferenceDot
                   key={report.id}
                   yAxisId="price"
-                  x={priceData.date}
+                  x={chartData.date}
                   y={yPosition}
                   r={4}
                   fill={getModelColor(report.model_id)}
