@@ -4,7 +4,7 @@
 
 백엔드 시스템은 세 가지 주요 데이터 저장소를 사용합니다:
 - **PostgreSQL**: 관계형 데이터 (종목, 뉴스, 예측, 사용자 등)
-- **Milvus**: 벡터 임베딩 (뉴스 기사 유사도 검색)
+- **FAISS**: 벡터 임베딩 (뉴스 기사 유사도 검색, 로컬 파일 기반)
 - **Redis**: 캐싱 (예측 결과, 핫 메트릭)
 
 ## 관계형 데이터 (PostgreSQL)
@@ -21,10 +21,13 @@
 - **매칭**: `match` (뉴스-주가 연결)
 - **공개 프리뷰**: `public_preview_links` (블로그/SNS 홍보용 공개 링크)
 
-## 벡터 임베딩 (Milvus)
+## 벡터 임베딩 (FAISS)
 
-- `backend/db/milvus_client.py`를 통해 Milvus + MinIO 참조
+- `backend/llm/vector_search.py`를 통해 FAISS 인덱스 관리
 - 뉴스 기사 임베딩 저장 및 유사도 검색
+- **저장 위치**: `data/faiss_index/` (로컬 파일)
+- **임베딩 모델**: KoSimCSE (BM-K/KoSimCSE-roberta) - 한국어 특화
+- **마이그레이션 완료**: 2025-11-22, Milvus → FAISS (7,040개 벡터)
 
 ## 캐싱 (Redis)
 
@@ -225,7 +228,7 @@ flowchart TD
     end
 
     DB[(PostgreSQL)]
-    VectorDB[(Milvus)]
+    VectorDB[(FAISS<br/>로컬 파일)]
     Cache[(Redis)]
 
     Start --> A1 & A2 & A3 & A4
@@ -259,6 +262,9 @@ flowchart TD
     style DB fill:#336791
     style VectorDB fill:#00ADD8
     style Cache fill:#DC382D
+
+    classDef localFile fill:#E0F7FA,stroke:#00796B,stroke-width:2px
+    class VectorDB localFile
 ```
 
 ## 관련 문서

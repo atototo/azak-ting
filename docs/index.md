@@ -29,7 +29,7 @@
 
 #### 3. Infrastructure (Docker Compose)
 - **타입:** 인프라 스택
-- **기술 스택:** Docker Compose 3.8, PostgreSQL 13, Redis 7, Milvus 2.3
+- **기술 스택:** Docker Compose 3.8, PostgreSQL 13, Redis 7, FAISS (로컬 파일)
 - **루트:** `infrastructure/`
 - **설정 파일:** `infrastructure/docker-compose.yml`
 
@@ -39,10 +39,12 @@
 
 ### Backend API
 - **프레임워크:** FastAPI 0.104
-- **데이터베이스:** PostgreSQL 13 + Milvus 2.3 (벡터 DB)
+- **데이터베이스:** PostgreSQL 13 + FAISS (벡터 검색, 로컬 파일)
 - **캐시/큐:** Redis 7 + Celery 5.3
-- **스케줄러:** APScheduler 3.10
-- **AI 통합:** OpenAI GPT-4o, text-embedding-3-small
+- **스케줄러:** AsyncIOScheduler (APScheduler 3.10)
+- **AI 통합:**
+  - 예측: OpenAI GPT-4o, OpenRouter DeepSeek-V3 (병렬 처리)
+  - 임베딩: KoSimCSE (BM-K/KoSimCSE-roberta) - 한국어 특화
 - **알림:** Telegram Bot (python-telegram-bot 20.7)
 
 ### Frontend Dashboard
@@ -57,9 +59,11 @@
 - **서비스:**
   - PostgreSQL 13-alpine
   - Redis 7-alpine
-  - Milvus 2.3.0 (+ etcd + MinIO)
   - Backend (FastAPI 컨테이너)
   - Frontend (Next.js 컨테이너)
+- **로컬 파일:**
+  - FAISS 벡터 인덱스 (`data/faiss_index/`) - 7,040개 벡터
+  - KoSimCSE 임베딩 모델 캐시
 
 ---
 
@@ -118,6 +122,9 @@
 
 ### 🔄 업데이트 이력
 - [업데이트 목록](./updates/README.md)
+- **[Issue #13: predicted_at 필드 추가 (2025-11-24)](./updates/issue-13-predicted-at-field.md)** - 예측 생성 추적 분리, 병렬 처리 (80s → 30s, 2.6x 개선), 762건 데이터 마이그레이션
+- **[AsyncIOScheduler Segfault 해결 (2025-11-24)](./updates/2025-11-24-async-scheduler-segfault-fix.md)** - BackgroundScheduler → AsyncIOScheduler, CronTrigger 분리, 1분봉 비활성화 (19,500 API 호출 절감)
+- **[FAISS 마이그레이션 (2025-11-22)](./updates/2025-11-22-faiss-migration.md)** - Milvus → FAISS, OpenAI → KoSimCSE, 7,040개 벡터 마이그레이션, 비용 $0.00002/embedding → $0
 - [공개 프리뷰 링크 시스템 (2025-11-21)](./updates/2025-11-21-public-preview-link-system.md) - 블로그/SNS 홍보용 UUID 기반 공개 링크, StockDetailView 공통 컴포넌트 추출 (1369줄 감소)
 - [Reasoning Model Support (2025-11-21)](./updates/2025-11-21-reasoning-model-support.md) - OpenAI reasoning 모델(gpt-5-mini, o1, o3) 지원 추가, model_type enum
 - [통합 리포트 생성 아키텍처 (2025-11-21)](./updates/2025-11-21-unified-report-architecture.md) - DB + Prediction 데이터 통합, 단일 진입점으로 일관성 보장 (436줄 제거)
@@ -169,7 +176,7 @@ npm run dev
 - **API Docs (Swagger):** http://localhost:8000/docs
 - **PostgreSQL:** localhost:5432
 - **Redis:** localhost:6380
-- **Milvus:** localhost:19530
+- **FAISS 인덱스:** `data/faiss_index/` (로컬 파일)
 
 ---
 
@@ -204,7 +211,6 @@ azak/
 ├── infrastructure/          # Docker Compose 스택
 │   ├── docker-compose.yml   # 서비스 정의
 │   ├── db-init/             # PostgreSQL 초기화
-│   ├── milvus-init/         # Milvus 초기화
 │   └── redis-init/          # Redis 초기화
 │
 ├── docs/                    # 프로젝트 문서 (이 폴더)
@@ -266,11 +272,11 @@ azak/
 ## 통합 아키텍처
 
 ### 데이터 흐름
-1. **뉴스 크롤링** (APScheduler) → PostgreSQL (`news`)
-2. **임베딩 생성** (OpenAI) → Milvus (벡터 DB)
-3. **예측 생성** (GPT-4o) → PostgreSQL (`prediction`)
-4. **Telegram 알림** (python-telegram-bot)
-5. **대시보드 조회** (Next.js) → FastAPI → PostgreSQL/Milvus
+1. **뉴스 크롤링** (AsyncIOScheduler, CronTrigger) → PostgreSQL (`news`)
+2. **임베딩 생성** (KoSimCSE 로컬 모델) → FAISS 인덱스 파일
+3. **예측 생성** (GPT-4o/DeepSeek-V3, 병렬 처리) → PostgreSQL (`prediction`)
+4. **Telegram 알림** (python-telegram-bot, predicted_at 기준 필터링)
+5. **대시보드 조회** (Next.js) → FastAPI → PostgreSQL/FAISS
 
 ### 인증 흐름
 1. Frontend → `/api/auth` (로그인)
@@ -297,6 +303,12 @@ azak/
 
 ---
 
-**📝 문서 버전:** 1.3.0
-**마지막 업데이트:** 2025-11-21 (Reasoning 모델 지원 추가, 업데이트 이력 추가)
+**📝 문서 버전:** 1.4.0
+**마지막 업데이트:** 2025-11-25
+**주요 변경사항:**
+- FAISS 마이그레이션 (Milvus → FAISS, OpenAI → KoSimCSE)
+- AsyncIOScheduler 안정화 (Segmentation Fault 해결)
+- predicted_at 필드 추가 및 병렬 처리 (2.6x 성능 개선)
+- 1분봉 수집 비활성화 (19,500 API 호출 절감)
+
 **생성 도구:** BMad document-project workflow (Deep Scan)

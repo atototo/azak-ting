@@ -2,7 +2,7 @@
 
 **AI 기반 다중 데이터 소스 통합 투자 인사이트 플랫폼**
 
-Azak은 주가·거래량, 투자자 수급, 재무지표, 기업정보, 기술적 지표, 시장동향(뉴스+공시) 등 6가지 데이터 티어를 통합 분석하여, OpenAI GPT-4o 기반 LLM으로 종목별 단기 주가 방향성을 예측하고, Next.js 웹 대시보드와 텔레그램 봇을 통해 실시간 투자 인사이트를 제공하는 Full-Stack 플랫폼입니다.
+Azak은 주가·거래량, 투자자 수급, 재무지표, 기업정보, 기술적 지표, 시장동향(뉴스+공시) 등 6가지 데이터 티어를 통합 분석하여, OpenAI GPT-4o 및 DeepSeek-V3 기반 멀티 LLM으로 종목별 단기 주가 방향성을 예측하고, Next.js 웹 대시보드와 텔레그램 봇을 통해 실시간 투자 인사이트를 제공하는 Full-Stack 플랫폼입니다.
 
 ## ⭐ 주요 개선사항 (2025.11)
 
@@ -20,23 +20,45 @@ Azak은 주가·거래량, 투자자 수급, 재무지표, 기업정보, 기술�
 
 ### 3. KIS API 광범위 연동
 한국투자증권 OpenAPI를 통한 실시간 시장 데이터 확보:
-- 실시간 주가/호가, 일봉/분봉 데이터
+- 실시간 주가/호가, 일봉 데이터 (1분봉 수집 비활성화로 19,500 API 호출 절감)
 - 투자자별 매매 동향 (외국인/기관/개인)
 - 기업 재무비율 및 상품정보
 - 업종/지수 데이터
 
-### 4. 자동화 스케줄러 강화
+### 4. 멀티 LLM 병렬 처리 최적화 (Issue #13, 2025-11-24)
+ThreadPoolExecutor를 활용한 동시 예측 생성:
+- **성능 개선**: 80초 → 30초 (2.6배 향상)
+- **처리량 증대**: 45개/시간 → 120개/시간
+- **에러 격리**: 개별 모델 실패 시에도 다른 모델 예측 성공
+- **predicted_at 필드**: 예측 생성 추적 분리, 알림 중복 방지 (762건 데이터 마이그레이션)
+
+### 5. FAISS 마이그레이션 (2025-11-22)
+Milvus 서버 기반 벡터 DB에서 로컬 파일 기반 FAISS로 전환:
+- **인프라 단순화**: Milvus + etcd + MinIO 제거 (5개 → 4개 컨테이너)
+- **비용 절감**: 임베딩 비용 $0.00002/embedding → $0 (OpenAI → KoSimCSE 로컬 모델)
+- **한국어 성능 향상**: KoSimCSE (BM-K/KoSimCSE-roberta) 한국어 특화 모델
+- **마이그레이션 완료**: 7,040개 벡터 마이그레이션
+
+### 6. AsyncIOScheduler 안정화 (2025-11-24)
+Segmentation Fault 해결 및 스케줄러 개선:
+- **안정성 향상**: BackgroundScheduler → AsyncIOScheduler (Segmentation Fault 해결)
+- **작업 분리**: CronTrigger 기반 뉴스 수집(0,10,20,30,40,50분)과 AI 분석(5,15,25,35,45,55분) 분리
+- **동시 실행 방지**: PyTorch 모델 로딩 충돌 방지
+- **싱글톤 RateLimiter**: Thread-safe 구현
+
+### 7. 자동화 스케줄러 강화
 다양한 주기로 데이터를 자동 수집하여 최신 정보 유지:
-- 장중 실시간 데이터: 1분/5분 주기
-- 일일 배치: 일봉, 투자자 동향, 모델 평가
-- 주간 배치: 재무비율, 상품정보
-- 자동 리포트 생성: 하루 3회 (10:00, 13:00, 15:45)
+- **뉴스 크롤링**: 0,10,20,30,40,50분 (CronTrigger)
+- **AI 분석**: 5,15,25,35,45,55분 (CronTrigger)
+- **일일 배치**: 일봉, 투자자 동향, 모델 평가
+- **주간 배치**: 재무비율, 상품정보
+- **자동 리포트 생성**: 하루 3회 (10:05, 13:05, 15:45)
 
 ## 🎯 주요 기능
 
 ### 데이터 수집 및 분석
 - **📊 다중 데이터 소스 통합**: 6가지 데이터 티어 기반 종합 분석
-  - **주가·거래량**: KIS API를 통한 실시간/일봉/분봉 데이터
+  - **주가·거래량**: KIS API를 통한 실시간/일봉 데이터
   - **투자자 수급**: 외국인/기관/개인 투자자별 매매 동향
   - **재무 지표**: 기업 재무비율 데이터 (ROE, PER, PBR 등)
   - **기업 정보**: KIS 상품정보 (업종, 시가총액, 상장주식수 등)
@@ -44,39 +66,52 @@ Azak은 주가·거래량, 투자자 수급, 재무지표, 기업정보, 기술�
   - **시장 동향**: 뉴스 + DART 공시 통합 분석
 - **📰 뉴스 크롤링**: 네이버, 한국경제, 매일경제, Reddit, DART 공시 자동 수집
 - **📈 KIS API 연동**: 한국투자증권 OpenAPI를 통한 실시간 시장 데이터
-  - 현재가/호가, 일봉/분봉, 시간외 거래가
+  - 현재가/호가, 일봉, 시간외 거래가
   - 업종/지수 데이터, 투자자별 거래 현황
   - 기업 상품정보, 재무비율
 
 ### AI 예측 및 리포트
-- **🤖 데이터 완전도 기반 AI 예측**: GPT-4o를 활용한 다중 데이터 소스 통합 분석
+- **🤖 멀티 LLM 병렬 예측**: GPT-4o, DeepSeek-V3 등 4개 모델 동시 실행
+  - 병렬 처리로 80초 → 30초 (2.6배 성능 향상)
+  - 개별 모델 실패 시에도 다른 모델 예측 성공 (에러 격리)
   - 6가지 데이터 티어 완전도에 따른 신뢰도 평가
-  - 단일 뉴스 의존도 감소, 정량적 데이터 중심 분석
 - **⚡ 비동기 리포트 생성**: 백그라운드 처리 및 실시간 알림
   - 즉시 응답 후 백그라운드에서 리포트 생성
   - 5초 주기 폴링을 통한 생성 상태 추적
   - Toast 알림을 통한 완료 통지
-- **🔍 RAG 기반 분석**: Milvus 벡터 DB를 활용한 유사 뉴스 검색 및 과거 패턴 분석
+- **🔍 RAG 기반 분석**: FAISS 로컬 벡터 검색을 활용한 유사 뉴스 검색 및 과거 패턴 분석
+  - KoSimCSE (BM-K/KoSimCSE-roberta) 한국어 특화 임베딩 모델
+  - 7,040개 뉴스 벡터 인덱스
 - **🧪 A/B 테스트**: 두 LLM 모델 동시 비교 및 성능 평가 자동화
 
 ### 사용자 인터페이스
 - **🌐 웹 대시보드**: Next.js 기반 사용자/관리자 대시보드, 종목별 AI 분석 리포트
 - **🔗 프리뷰 URL**: 토큰 기반 비로그인 접근 (블로그 자동화용)
-- **💬 텔레그램 알림**: 중요 종목에 대한 실시간 예측 결과 푸시
+- **💬 텔레그램 알림**: 중요 종목에 대한 실시간 예측 결과 푸시 (predicted_at 기반 중복 방지)
 
 ### 자동화 및 스케줄링
-- **⏰ 다양한 스케줄러 작업**: APScheduler를 통한 주기적 데이터 수집 및 분석
-  - 뉴스 크롤링: 10분마다 (네이버/한경/매경/Reddit)
-  - 종목별 뉴스 검색: 10분마다
-  - DART 공시: 5분마다
-  - KIS 1분봉: 매 1분 (장 시간만, 09:00-15:30)
-  - KIS 일봉: 매일 15:40
-  - KIS 시장 데이터: 매 5분 (호가, 현재가, 업종지수)
-  - 투자자별 매매동향: 매일 16:00
-  - 상품정보: 매주 일요일 01:00
-  - 재무비율: 매주 일요일 02:00
-  - 리포트 생성: 하루 3번 (10:00, 13:00, 15:45)
-  - 모델 평가: 매일 16:30
+- **⏰ AsyncIOScheduler 기반 작업**: CronTrigger를 통한 주기적 데이터 수집 및 분석
+  - **데이터 수집** (0,10,20,30,40,50분):
+    - 뉴스 크롤링 (네이버/한경/매경/Reddit)
+    - 종목별 뉴스 검색
+    - DART 공시 (5분마다)
+    - 자동 알림 (predicted_at 기준 필터링)
+  - **AI 분석** (5,15,25,35,45,55분):
+    - 리포트 생성 (10:05, 13:05, 15:45, 병렬 처리)
+    - 뉴스 임베딩 (16:05, KoSimCSE 로컬 모델)
+  - **시장 데이터**:
+    - KIS 일봉: 매일 15:40
+    - ~~KIS 1분봉: 매 1분~~ → **비활성화** (19,500 API 호출 절감)
+    - KIS 시장 데이터: 매 5분 (호가, 현재가, 업종지수)
+    - 시간외 거래가: 매일 18:00
+  - **평가 및 매칭**:
+    - 뉴스-주가 매칭: 매일 15:40
+    - 모델 평가: 매일 16:30
+  - **주간 배치**:
+    - 투자자별 매매동향: 매일 16:00
+    - 업종/지수 일자별: 매일 18:00
+    - 상품정보: 매주 일요일 01:00
+    - 재무비율: 매주 일요일 02:00
 
 ### 법적 보호
 - **⚖️ 투자 면책 조항**: 푸터에 명시된 법적 책임 한계
@@ -88,13 +123,17 @@ Azak은 주가·거래량, 투자자 수급, 재무지표, 기업정보, 기술�
 - **프론트엔드**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS
 - **백엔드**: Python 3.11 + FastAPI
 - **배포**: AWS EC2 (t3.small) + Docker Compose
-- **데이터베이스**: PostgreSQL (관계형 데이터) + Milvus (벡터 검색) + Redis (예측 캐싱)
+- **데이터베이스**: PostgreSQL 13 (관계형 데이터) + FAISS (벡터 검색, 로컬 파일) + Redis (예측 캐싱)
 - **외부 API**:
   - KIS OpenAPI (한국투자증권): 실시간 주가, 투자자 수급, 재무 데이터
-  - OpenAI API: GPT-4o (예측), text-embedding-3-small (임베딩, 768차원)
+  - OpenAI API: GPT-4o (예측)
+  - OpenRouter API: DeepSeek-V3 (예측)
+- **AI 모델**:
+  - 예측: GPT-4o, DeepSeek-V3 (멀티 모델 병렬 처리)
+  - 임베딩: KoSimCSE (BM-K/KoSimCSE-roberta) - 한국어 특화 로컬 모델
 - **데이터 처리**:
-  - 비동기 작업: Celery + Redis (리포트 생성)
-  - 스케줄러: APScheduler (주기적 크롤링 및 데이터 수집)
+  - 병렬 처리: ThreadPoolExecutor (4개 LLM 모델 동시 실행)
+  - 스케줄러: AsyncIOScheduler (CronTrigger 기반)
   - 실시간 알림: WebSocket + Server-Sent Events
 
 ### 데이터 티어 구조
@@ -110,7 +149,7 @@ Azak은 6가지 데이터 티어를 기반으로 종목을 분석합니다:
 
 각 티어의 데이터 완전도를 계산하여 리포트 신뢰도를 평가합니다. 기존의 뉴스 중심 분석에서 벗어나 정량적 데이터를 우선하는 구조로 개선되었습니다.
 
-자세한 아키텍처는 [docs/architecture.md](docs/architecture.md)를 참조하세요.
+자세한 아키텍처는 [docs/index.md](docs/index.md)를 참조하세요.
 
 ## 🛠️ 기술 스택
 
@@ -118,11 +157,12 @@ Azak은 6가지 데이터 티어를 기반으로 종목을 분석합니다:
 |------|------|
 | **Frontend** | Next.js 15.1.4, React 19, TypeScript 5.x, Tailwind CSS 3.x |
 | **Backend** | Python 3.11, FastAPI 0.104+ |
-| **Database** | PostgreSQL 15, Milvus 2.3+, Redis 7.0+ |
-| **LLM** | OpenAI GPT-4o, text-embedding-3-small (768d) |
+| **Database** | PostgreSQL 13, FAISS (로컬 파일), Redis 7.0+ |
+| **LLM - 예측** | OpenAI GPT-4o, OpenRouter DeepSeek-V3 (병렬 처리) |
+| **LLM - 임베딩** | KoSimCSE (BM-K/KoSimCSE-roberta) - 한국어 특화 로컬 모델 |
 | **Market Data** | KIS OpenAPI (한국투자증권) |
-| **Task Queue** | Celery + Redis (비동기 리포트 생성) |
-| **Scheduler** | APScheduler 3.10+ |
+| **Parallel Processing** | ThreadPoolExecutor (멀티 모델 동시 실행) |
+| **Scheduler** | AsyncIOScheduler (APScheduler 3.10+) |
 | **Notification** | python-telegram-bot 20.7+ |
 | **Containerization** | Docker 24+, Docker Compose 2.20+ |
 | **Cloud** | AWS EC2 |
@@ -182,9 +222,9 @@ docker-compose up -d
 
 다음 서비스가 시작됩니다:
 - PostgreSQL (포트 5432)
-- Redis (포트 6379)
-- Milvus (포트 19530)
-- etcd, MinIO (Milvus 의존성)
+- Redis (포트 6380)
+
+**참고**: FAISS는 로컬 파일 기반이므로 별도의 Docker 서비스가 필요 없습니다.
 
 ### 4. Python 가상 환경 설정 (로컬 개발)
 
@@ -200,10 +240,10 @@ pip install -r requirements-dev.txt  # 개발 도구
 ```bash
 # PostgreSQL 테이블 생성
 python scripts/init_db.py
-
-# Milvus 컬렉션 생성
-python scripts/init_milvus.py
 ```
+
+**FAISS 인덱스 초기화**:
+FAISS 인덱스는 첫 임베딩 생성 시 자동으로 `data/faiss_index/` 디렉터리에 생성됩니다.
 
 ### 6. Backend 서버 실행
 
@@ -226,7 +266,7 @@ npm run dev
 ```
 
 프론트엔드가 실행되면:
-- 웹 대시보드: http://localhost:3000
+- 웹 대시보드: http://localhost:3030
 - API 프록시: `/api/*` → `http://localhost:8000/api/*`
 
 ## 🧪 테스트 실행
@@ -276,7 +316,7 @@ azak/
 │   ├── main.py                # 진입점
 │   ├── config.py              # 설정 관리
 │   ├── crawlers/              # 뉴스 크롤러
-│   │   ├── crawler_scheduler.py  # 통합 스케줄러
+│   │   ├── crawler_scheduler.py  # AsyncIOScheduler 통합 스케줄러
 │   │   ├── naver_crawler.py      # 네이버 뉴스
 │   │   ├── hankyung_crawler.py   # 한국경제
 │   │   ├── maeil_crawler.py      # 매일경제
@@ -287,21 +327,31 @@ azak/
 │   │   ├── kis_scheduler.py      # KIS 데이터 수집 스케줄러
 │   │   └── kis_utils.py          # KIS 유틸리티
 │   ├── llm/                   # LLM 예측 엔진
-│   │   ├── data_tier_builder.py  # 6가지 데이터 티어 구축
-│   │   ├── predictor.py          # AI 예측
-│   │   └── ab_test.py            # A/B 테스트
-│   ├── tasks/                 # 비동기 작업 (Celery)
-│   │   └── report_tasks.py       # 리포트 생성 작업
+│   │   ├── multi_model_predictor.py  # 멀티 모델 병렬 처리 (ThreadPoolExecutor)
+│   │   ├── investment_report.py      # 투자 리포트 생성
+│   │   ├── embedder.py               # KoSimCSE 임베딩 (Thread-Safe)
+│   │   ├── vector_search.py          # FAISS 벡터 검색
+│   │   ├── data_tier_builder.py      # 6가지 데이터 티어 구축
+│   │   └── ab_test.py                # A/B 테스트
 │   ├── notifications/         # 텔레그램 알림
 │   ├── db/                    # 데이터베이스 모델 및 리포지토리
-│   ├── scheduler/             # APScheduler 작업
+│   │   └── models/
+│   │       └── news.py           # predicted_at 필드 포함
+│   ├── scheduler/             # AsyncIOScheduler 작업
 │   ├── api/                   # REST API 엔드포인트
 │   │   ├── reports.py            # 리포트 API (비동기 생성)
 │   │   ├── preview.py            # 프리뷰 URL API
 │   │   └── ab_test.py            # A/B 테스트 API
 │   └── scripts/               # 유틸리티 스크립트
 ├── data/                      # 로컬 데이터 저장소
+│   └── faiss_index/           # FAISS 벡터 인덱스 (7,040개 벡터)
 ├── docs/                      # 문서 (PRD, 아키텍처)
+│   ├── index.md               # 문서 메인 인덱스
+│   ├── architecture/          # 아키텍처 문서
+│   └── updates/               # 업데이트 이력
+│       ├── 2025-11-22-faiss-migration.md
+│       ├── 2025-11-24-async-scheduler-segfault-fix.md
+│       └── issue-13-predicted-at-field.md
 ├── infrastructure/            # Docker 설정
 ├── scripts/                   # 프로젝트 레벨 스크립트
 ├── tests/                     # 테스트 코드
@@ -319,10 +369,42 @@ azak/
 
 ## 📚 문서
 
-- [PRD (Product Requirements Document)](docs/prd.md)
-- [아키텍처 문서](docs/architecture.md)
-- [US-005: 데이터 티어 기반 리포트 개선](docs/us-005-data-tier-report.md)
-- [US-006: 비동기 리포트 생성 시스템](docs/us-006-async-report-generation.md)
+- **[프로젝트 문서 인덱스](docs/index.md)** - 전체 문서 목록 및 참조
+- **아키텍처**:
+  - [전체 아키텍처 개요](docs/architecture/overview.md)
+  - [Infrastructure](docs/architecture/infrastructure.md)
+  - [Backend 아키텍처](docs/architecture/backend/)
+  - [Frontend 아키텍처](docs/architecture/frontend/)
+- **업데이트 이력**:
+  - [Issue #13: predicted_at 필드 추가 (2025-11-24)](docs/updates/issue-13-predicted-at-field.md)
+  - [AsyncIOScheduler Segfault 해결 (2025-11-24)](docs/updates/2025-11-24-async-scheduler-segfault-fix.md)
+  - [FAISS 마이그레이션 (2025-11-22)](docs/updates/2025-11-22-faiss-migration.md)
+- **기능 문서**:
+  - [US-005: 데이터 티어 기반 리포트 개선](docs/us-005-data-tier-report.md)
+  - [US-006: 비동기 리포트 생성 시스템](docs/us-006-async-report-generation.md)
+
+## 🔄 최근 주요 업데이트 (2025-11-24 ~ 2025-11-25)
+
+### 성능 최적화
+- **멀티 LLM 병렬 처리**: 80초 → 30초 (2.6배 향상, ThreadPoolExecutor)
+- **처리량 증대**: 45개/시간 → 120개/시간
+- **API 비용 절감**: 1분봉 수집 비활성화로 19,500 호출/일 감소
+- **임베딩 비용 절감**: OpenAI → KoSimCSE 로컬 모델 ($0.00002 → $0)
+
+### 안정성 향상
+- **AsyncIOScheduler**: Segmentation Fault 해결 (BackgroundScheduler → AsyncIOScheduler)
+- **CronTrigger 분리**: 뉴스 수집과 AI 분석 분리로 PyTorch 모델 로딩 충돌 방지
+- **Thread-Safe Embedder**: Double-check lock pattern 구현
+- **에러 격리**: 개별 LLM 모델 실패 시에도 다른 모델 예측 성공
+
+### 인프라 단순화
+- **FAISS 마이그레이션**: Milvus + etcd + MinIO 제거 (5개 → 4개 컨테이너)
+- **로컬 벡터 검색**: 서버 기반 DB → 파일 기반 검색
+- **한국어 성능 향상**: KoSimCSE 한국어 특화 모델
+
+### 데이터베이스
+- **predicted_at 필드 추가**: 예측 생성 추적 분리, 알림 중복 방지
+- **마이그레이션 완료**: 762건 기존 데이터 업데이트
 
 ## ⚖️ 법적 고지사항
 
@@ -334,7 +416,8 @@ azak/
 - 주가/재무 데이터: 한국투자증권 OpenAPI
 - 뉴스 데이터: 네이버, 한국경제, 매일경제, Reddit
 - 공시 데이터: 금융감독원 DART
-- AI 분석: OpenAI GPT-4o
+- AI 분석: OpenAI GPT-4o, DeepSeek-V3
+- 임베딩: KoSimCSE (BM-K/KoSimCSE-roberta)
 
 **저작권 보호**
 
@@ -351,3 +434,14 @@ MIT License
 ## 📞 문의
 
 문제가 발생하거나 질문이 있으시면 이슈를 생성해주세요.
+
+---
+
+**📝 문서 버전:** 2.0.0
+**마지막 업데이트:** 2025-11-25
+**주요 변경사항:**
+- FAISS 마이그레이션 반영 (Milvus → FAISS)
+- AsyncIOScheduler 안정화 반영
+- 멀티 LLM 병렬 처리 최적화 반영
+- predicted_at 필드 추가 반영
+- 최신 스케줄러 작업 목록 업데이트

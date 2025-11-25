@@ -52,15 +52,25 @@
 ### `llm/` - AI & 예측
 
 - `multi_model_predictor.py` - 멀티 LLM 예측 (OpenAI, OpenRouter, normal/reasoning 모델 지원)
+  - **병렬 처리**: ThreadPoolExecutor (4 모델 동시 실행, 80s → 30s, 2.6x 개선)
+  - **에러 격리**: 개별 모델 실패 시에도 다른 모델 예측 성공
 - `investment_report.py` - 투자 리포트 생성 (통합 프롬프트 `build_unified_prompt`)
 - `embedder.py` - 뉴스 임베딩 생성
+  - **임베딩 모델**: KoSimCSE (BM-K/KoSimCSE-roberta) - 한국어 특화
+  - **Thread-Safe**: Double-check lock pattern으로 싱글톤 보장
+  - **마이그레이션**: OpenAI text-embedding-3-small → 로컬 KoSimCSE (2025-11-22)
 - `vector_search.py` - 벡터 유사도 검색
+  - **검색 엔진**: FAISS (로컬 파일 기반, `data/faiss_index/`)
+  - **마이그레이션**: Milvus → FAISS (2025-11-22)
 - `prediction_cache.py` - 예측 결과 캐싱
 - `prompts/` - LLM 프롬프트 템플릿
 
 ### `scheduler/` - 백그라운드 작업
 
-- `crawler_scheduler.py` - APScheduler 기반 크롤링 스케줄러
+- `crawler_scheduler.py` - AsyncIOScheduler 기반 크롤링 스케줄러
+  - **스케줄러**: AsyncIOScheduler (Segmentation Fault 해결, 2025-11-24)
+  - **트리거**: CronTrigger (뉴스: 0,10,20,30,40,50분 / AI: 5,15,25,35,45,55분)
+  - **마이그레이션**: BackgroundScheduler → AsyncIOScheduler
 - `evaluation_scheduler.py` - 평가 작업 스케줄러
 
 ### `services/` - 비즈니스 로직
@@ -75,11 +85,11 @@
 
 - `session.py` - SQLAlchemy 세션 관리
 - `base.py` - 베이스 모델 클래스
-- `milvus_client.py` - Milvus 벡터 DB 클라이언트
+- ~~`milvus_client.py`~~ - **제거됨** (Milvus → FAISS 마이그레이션, 2025-11-22)
 - `models/` - SQLAlchemy ORM 모델
   - `user.py` - 사용자
   - `stock.py` - 종목
-  - `news.py` - 뉴스
+  - `news.py` - 뉴스 (predicted_at 필드 추가, 2025-11-24)
   - `prediction.py` - 예측
   - `stock_analysis.py` - 종목 분석
   - `model.py` - AI 모델 (model_type: normal/reasoning 지원)

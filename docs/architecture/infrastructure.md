@@ -2,7 +2,7 @@
 
 ## 개요
 
-Docker Compose를 사용한 멀티 컨테이너 스택으로 PostgreSQL, Redis, Milvus (벡터 DB), Backend (FastAPI), Frontend (Next.js)를 단일 호스트에서 실행합니다. 개발 환경 및 소규모 프로덕션 환경에 적합합니다.
+Docker Compose를 사용한 멀티 컨테이너 스택으로 PostgreSQL, Redis, Backend (FastAPI), Frontend (Next.js)를 단일 호스트에서 실행합니다. 벡터 검색은 FAISS 로컬 파일 시스템을 사용합니다. 개발 환경 및 소규모 프로덕션 환경에 적합합니다.
 
 ## 기술 스택
 
@@ -13,9 +13,8 @@ Docker Compose를 사용한 멀티 컨테이너 스택으로 PostgreSQL, Redis, 
 ### 데이터베이스 & 스토리지
 - **PostgreSQL 13-alpine**: 주 데이터베이스
 - **Redis 7-alpine**: 캐싱 및 작업 큐
-- **Milvus v2.3.0**: 벡터 임베딩 저장소 (standalone mode)
-- **MinIO (latest)**: Milvus 오브젝트 스토리지
-- **etcd v3.5.5**: Milvus 메타데이터 저장소
+- **FAISS (로컬 파일)**: 벡터 임베딩 저장소 (파일 기반, 2025-11-22 마이그레이션 완료)
+- **KoSimCSE 임베딩 모델**: 로컬 한국어 특화 임베딩 모델 (BM-K/KoSimCSE-roberta)
 
 ### 애플리케이션 컨테이너
 - **Backend (FastAPI)**: Python 3.11-slim 기반
@@ -35,41 +34,33 @@ graph TB
             Postgres[(PostgreSQL 13<br/>:5432)]
             Redis[(Redis 7<br/>:6380→6379)]
         end
+    end
 
-        subgraph "벡터 DB 스택"
-            Milvus[Milvus v2.3<br/>:19530, :9091]
-            MinIO[MinIO<br/>Object Storage]
-            Etcd[etcd v3.5<br/>Metadata]
-        end
+    subgraph "로컬 파일 시스템"
+        FAISS[FAISS Index<br/>로컬 파일<br/>7,040 벡터]
+        EmbedModel[KoSimCSE<br/>한국어 임베딩 모델<br/>BM-K/KoSimCSE-roberta]
     end
 
     subgraph "볼륨 (데이터 지속성)"
         PGVol[postgres_data]
         RedisVol[redis_data]
-        MilvusVol[milvus_data]
-        EtcdVol[etcd_data]
-        MinIOVol[minio_data]
     end
 
     Frontend -->|API 프록시| Backend
     Backend --> Postgres
     Backend --> Redis
-    Backend --> Milvus
-
-    Milvus --> Etcd
-    Milvus --> MinIO
+    Backend -->|벡터 검색| FAISS
+    Backend -->|임베딩 생성| EmbedModel
 
     Postgres -.-> PGVol
     Redis -.-> RedisVol
-    Milvus -.-> MilvusVol
-    Etcd -.-> EtcdVol
-    MinIO -.-> MinIOVol
 
     style Frontend fill:#4A90E2
     style Backend fill:#50C878
     style Postgres fill:#336791
     style Redis fill:#DC382D
-    style Milvus fill:#00ADD8
+    style FAISS fill:#00ADD8
+    style EmbedModel fill:#90EE90
 ```
 
 ## 서비스 구성
@@ -123,69 +114,7 @@ redis-cli ping
 # 10초 간격, 3초 타임아웃, 5회 재시도
 ```
 
-### 3. etcd (etcd)
-
-```yaml
-image: quay.io/coreos/etcd:v3.5.5
-```
-
-**역할**: Milvus 메타데이터 저장소
-
-**환경 변수**:
-- `ETCD_AUTO_COMPACTION_MODE`: revision
-- `ETCD_AUTO_COMPACTION_RETENTION`: 1000
-- `ETCD_QUOTA_BACKEND_BYTES`: 4294967296 (4GB)
-
-**볼륨**: `etcd_data:/etcd`
-
-### 4. MinIO (minio)
-
-```yaml
-image: minio/minio:latest
-```
-
-**역할**: Milvus 오브젝트 스토리지 백엔드
-
-**환경 변수**:
-- `MINIO_ROOT_USER`: minioadmin
-- `MINIO_ROOT_PASSWORD`: minioadmin
-
-**명령어**: `minio server /minio_data`
-
-**헬스체크**:
-```bash
-curl -f http://localhost:9000/minio/health/live
-# 30초 간격, 20초 타임아웃, 3회 재시도
-```
-
-### 5. Milvus (milvus)
-
-```yaml
-image: milvusdb/milvus:v2.3.0
-ports: 19530:19530, 9091:9091
-```
-
-**역할**: 벡터 임베딩 저장 및 유사도 검색
-
-**모드**: Standalone (단일 노드)
-
-**환경 변수**:
-- `ETCD_ENDPOINTS`: etcd:2379
-- `MINIO_ADDRESS`: minio:9000
-
-**의존성**: etcd, minio
-
-**포트**:
-- `19530`: gRPC API (클라이언트 연결)
-- `9091`: HTTP 관리 API (헬스체크)
-
-**헬스체크**:
-```bash
-curl -f http://localhost:9091/healthz
-# 30초 간격, 90초 시작 대기, 20초 타임아웃
-```
-
-### 6. Backend (backend)
+### 3. Backend (backend)
 
 ```yaml
 build: ../backend/Dockerfile
@@ -200,14 +129,17 @@ env_file: ../.env
 - 시스템 의존성: gcc, postgresql-client
 - Python 의존성: `requirements.txt`
 
-**의존성**: postgres, redis, milvus
+**의존성**: postgres, redis
+
+**벡터 검색**: FAISS 로컬 파일 (`data/faiss_index/`)
+**임베딩 모델**: KoSimCSE (BM-K/KoSimCSE-roberta) 로컬 실행
 
 **명령어**:
 ```bash
 uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```
 
-### 7. Frontend (frontend)
+### 4. Frontend (frontend)
 
 ```yaml
 build: ../frontend/Dockerfile
@@ -232,15 +164,13 @@ env_file: ../.env
 |--------|---------------|-------------|----------|
 | PostgreSQL | 5432 | 5432 | TCP |
 | Redis | 6379 | 6380 | TCP |
-| Milvus (gRPC) | 19530 | 19530 | TCP |
-| Milvus (HTTP) | 9091 | 9091 | HTTP |
 | Backend | 8000 | 8000 | HTTP |
 | Frontend | 3030 | 3030 | HTTP |
 
 ### 내부 네트워크
 
 - **네트워크**: Docker Compose 기본 브리지 네트워크
-- **DNS**: 서비스 이름으로 서로 통신 (예: `backend`, `postgres`, `milvus`)
+- **DNS**: 서비스 이름으로 서로 통신 (예: `backend`, `postgres`, `redis`)
 
 ## 볼륨 및 데이터 지속성
 
@@ -250,10 +180,11 @@ env_file: ../.env
 volumes:
   postgres_data:       # PostgreSQL 데이터
   redis_data:          # Redis RDB (비활성화됨)
-  milvus_data:         # Milvus 벡터 데이터
-  etcd_data:           # etcd 메타데이터
-  minio_data:          # MinIO 오브젝트 스토리지
 ```
+
+**로컬 파일 시스템**:
+- `data/faiss_index/`: FAISS 벡터 인덱스 파일 (7,040개 벡터, 768차원)
+- `~/.cache/huggingface/`: KoSimCSE 임베딩 모델 캐시
 
 ### 볼륨 위치
 
@@ -296,9 +227,8 @@ POSTGRES_DB=azak
 REDIS_HOST=localhost
 REDIS_PORT=6380
 
-# Milvus
-MILVUS_HOST=localhost
-MILVUS_PORT=19530
+# FAISS (로컬 파일, 설정 불필요)
+# data/faiss_index/ 경로에 자동 저장
 
 # Backend
 DATABASE_URL=postgresql://postgres:your_secure_password@localhost:5432/azak
@@ -326,8 +256,6 @@ KIS_APP_SECRET=your_kis_app_secret
 |--------|---------------|------|----------|--------|
 | PostgreSQL | `pg_isready -U postgres` | 10초 | 5초 | 5회 |
 | Redis | `redis-cli ping` | 10초 | 3초 | 5회 |
-| MinIO | `curl -f http://localhost:9000/minio/health/live` | 30초 | 20초 | 3회 |
-| Milvus | `curl -f http://localhost:9091/healthz` | 30초 | 20초 | 3회 |
 
 ### 재시작 정책
 
@@ -489,10 +417,11 @@ pool_recycle=3600
 - RDB 스냅샷 비활성화로 디스크 I/O 감소
 - 메모리 내 캐싱만 사용
 
-### Milvus
+### FAISS
 
-- Standalone 모드: 소규모 데이터셋에 적합 (< 100만 벡터)
-- 대규모 확장 필요 시 Cluster 모드로 전환 고려
+- 파일 기반 인메모리 검색: 빠른 벡터 유사도 검색
+- 7,040개 벡터 (768차원) 처리 시 밀리초 단위 응답
+- 대규모 확장 필요 시 Milvus/Qdrant 등 서버 기반 DB로 전환 고려
 
 ## 보안 고려사항
 
@@ -500,7 +429,6 @@ pool_recycle=3600
 
 프로덕션에서 반드시 변경:
 - PostgreSQL: `POSTGRES_PASSWORD`
-- MinIO: `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`
 
 ### 2. 포트 접근 제한
 
@@ -553,17 +481,17 @@ docker exec azak-redis redis-cli ping
 docker exec azak-redis redis-cli INFO memory
 ```
 
-### 3. Milvus 연결 실패
+### 3. FAISS 인덱스 로드 실패
 
 ```bash
-# 의존성 확인 (etcd, minio)
-docker-compose ps etcd minio
+# FAISS 인덱스 파일 확인
+ls -lh data/faiss_index/
 
-# Milvus 로그 확인
-docker-compose logs milvus
+# 백엔드 로그 확인
+docker-compose logs backend | grep -i faiss
 
-# 헬스체크
-curl http://localhost:9091/healthz
+# 임베딩 모델 캐시 확인
+ls -lh ~/.cache/huggingface/
 ```
 
 ### 4. 디스크 공간 부족
@@ -602,6 +530,9 @@ ports:
 
 ---
 
-**📝 문서 버전:** 2.0.0
-**마지막 업데이트:** 2025-11-20
-**변경사항**: 실제 구현 검증 및 한글 상세 문서 작성
+**📝 문서 버전:** 3.0.0
+**마지막 업데이트:** 2025-11-25
+**변경사항**:
+- Milvus → FAISS 마이그레이션 반영 (2025-11-22)
+- OpenAI → KoSimCSE 로컬 임베딩 모델 전환
+- 벡터 DB 아키텍처 단순화 (서버 기반 → 파일 기반)

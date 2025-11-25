@@ -39,7 +39,7 @@ pm2 start ecosystem.config.js
 | 프로세스 관리 (Process Management) | PM2 데몬 + ngrok 터널 | PM2 5.x | 전체 | 24/7 가동, 자동 재시작, 로그 관리, 외부 접근 |
 | 백엔드 런타임 (Backend Runtime) | FastAPI + Uvicorn + Celery + APScheduler | Python 3.11 / FastAPI 0.104 | 데이터 수집, 예측, 알림 | 기존 코드베이스와 일치, 비동기 친화적 |
 | 프론트엔드 (Frontend) | Next.js 15 App Router, React 19, React Query | 15.1.4 / 19.0.0 | 대시보드/모델 비교 | SSR/CSR 혼합 및 캐싱 가능 |
-| 데이터 레이어 (Data Layer) | Postgres 13, Redis 7, Milvus 2.3 + MinIO/etcd | 13.12 / 7.0 / 2.3.0 | 저장소, 임베딩, 캐싱 | 현재 의존성 및 Compose 스택과 일치 |
+| 데이터 레이어 (Data Layer) | Postgres 13, Redis 7, FAISS (로컬 파일) | 13.12 / 7.0 / latest | 저장소, 임베딩, 캐싱 | FAISS 마이그레이션 완료 (2025-11-22) |
 | 알림 (Notifications) | `python-telegram-bot`을 통한 Telegram 봇 | v20.7 | 알림 에픽 | 투자자에게 이미 검증됨, 새 채널 불필요 |
 | 보안 (Security) | JWT 인증 + HTTPS (ngrok), `.env` 시크릿 관리 | n/a | 전체 | 간단한 인증, 로컬 시크릿 관리 |
 | 관측성 (Observability) | PM2 모니터링 + `/health` 엔드포인트 | n/a | 운영 | 실시간 프로세스 모니터링, 로그 파일 관리 |
@@ -95,15 +95,15 @@ azak/
 
 - **프론트엔드 (Frontend):** Next.js 15.1.4, React 19.0.0, TypeScript 5.x, Tailwind CSS 3.4.1, React Query 5.61.5, Recharts 2.15.0, lucide-react 0.468.0, react-hot-toast 2.6.0, date-fns 4.1.0, clsx 2.1.1, class-variance-authority 0.7.1, tailwind-merge 2.5.0
 - **백엔드 (Backend):** Python 3.11, FastAPI 0.104+, SQLAlchemy 2, Pydantic v2, Uvicorn, Celery 5.3, APScheduler 3.10
-- **데이터 및 인프라 (Data & Infra):** Postgres 13-alpine (포트 5432), Redis 7-alpine (포트 6380→6379), Milvus 2.3.0 (포트 19530, etcd v3.5.5 & MinIO 포함), Docker Compose v3.8
-- **AI 프로바이더 (AI Providers):** OpenAI GPT-4o + text-embedding-3-small (OpenAI/OpenRouter API를 통해)
+- **데이터 및 인프라 (Data & Infra):** Postgres 13-alpine (포트 5432), Redis 7-alpine (포트 6380→6379), FAISS (로컬 파일 기반), Docker Compose v3.8
+- **AI 프로바이더 (AI Providers):** OpenAI GPT-4o (예측), KoSimCSE (BM-K/KoSimCSE-roberta, 로컬 임베딩)
 
 ### 통합 지점 (Integration Points)
 
 1. **프론트엔드 ↔ 백엔드 (Frontend ↔ Backend):** JWT 인증 헤더와 함께 `/api/*`로 HTTPS REST 요청; React Query가 캐싱/무효화 처리.
 2. **백엔드 ↔ Postgres:** `backend/db/session.py`의 SQLAlchemy 세션 팩토리를 리포지토리 전체에서 사용.
 3. **백엔드 ↔ Redis:** Celery 브로커 + 단기 캐시(시장 스냅샷, 쓰로틀링)를 `redis://` 환경 변수를 통해 사용.
-4. **백엔드 ↔ Milvus/MinIO:** `backend/db/milvus_client.py`가 뉴스/예측을 위한 임베딩을 저장하고 조회.
+4. **백엔드 ↔ FAISS:** `backend/llm/vector_search.py`가 뉴스 임베딩을 로컬 파일(`data/faiss_index/`)에 저장하고 조회.
 5. **백엔드 ↔ Telegram:** `python-telegram-bot` 클라이언트가 시크릿의 봇 토큰을 사용하여 알림 게시.
 6. **스케줄러 ↔ 서비스 (Schedulers ↔ Services):** APScheduler + Celery 태스크가 설정된 간격으로 크롤러와 평가 작업 실행.
 
@@ -179,9 +179,11 @@ _이번 릴리스에서는 새로운 패턴이 필요하지 않으며, 표준 �
 - `EvaluationHistory` → `Model` 추세 추적
 - `StockAnalysis` → `Stock`, `Model`
 
-### Milvus 벡터 컬렉션
-- `news_embeddings`, `prediction_embeddings` - OpenAI text-embedding-3-small (768차원)
+### FAISS 벡터 인덱스
+- `news_embeddings` - KoSimCSE (BM-K/KoSimCSE-roberta, 768차원)
 - Postgres ID로 키잉, 메타데이터는 SQL 테이블에 미러링
+- 로컬 파일 저장: `data/faiss_index/`
+- 마이그레이션 완료: 2025-11-22 (7,040개 벡터)
 
 ## API 계약 (API Contracts - 42개 엔드포인트)
 
@@ -356,7 +358,7 @@ pm2 logs
 3. **uv 패키지 관리자 (uv package manager):** 빠른 Python 패키지 설치 및 의존성 관리; pip 대비 속도 향상.
 4. **ngrok 예약 도메인 (ngrok reserved domain):** 외부 접근을 위한 고정 HTTPS 도메인 (azak.ngrok.app); 별도 인증서 불필요.
 5. **Compose 오케스트레이터 (Compose orchestrator):** 인프라 서비스(DB, 캐시)는 Docker Compose로 격리하여 안정성 확보.
-6. **Milvus 임베딩 (Milvus embeddings):** 기존 데이터 흐름 재사용; 재아키텍처 불필요.
+6. **FAISS 로컬 임베딩 (FAISS local embeddings):** Milvus 서버 의존성 제거, 파일 기반 단순화 (2025-11-22 마이그레이션).
 7. **Telegram 알림 유지 (Telegram alerts retained):** 간단하고 효과적인 알림 채널로 검증됨.
 8. **React 19 + Next.js 15 (Latest stable):** 최신 안정화 버전으로 성능 및 개발 경험 향상.
 
@@ -389,5 +391,6 @@ cd infrastructure && docker-compose down
 ```
 
 ---
-_Last Updated: 2025-11-20 by young_
+_Last Updated: 2025-11-25 by young_
 _Initial Version: 2025-11-11_
+_Major Update (v1.4.0): FAISS Migration, AsyncIOScheduler, predicted_at field_

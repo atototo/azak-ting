@@ -12,8 +12,8 @@ sequenceDiagram
     participant Service as 분석 서비스
     participant Cache as Redis 캐시
     participant DB as PostgreSQL
-    participant Vector as Milvus
-    participant LLM as OpenAI/OpenRouter
+    participant Vector as FAISS
+    participant LLM as GPT-4o/DeepSeek-V3
     participant TG as 텔레그램
 
     Client->>API: POST /api/predict {stock_code}
@@ -62,14 +62,14 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant Scheduler as APScheduler
+    participant Scheduler as AsyncIOScheduler
     participant Crawler as 뉴스 크롤러
     participant Matcher as 매칭 서비스
     participant Embedder as 임베딩 생성기
     participant Reporter as 리포트 생성기
     participant Evaluator as 평가 서비스
     participant DB as PostgreSQL
-    participant Vector as Milvus
+    participant Vector as FAISS
     participant TG as 텔레그램
 
     Note over Scheduler: 09:00 - 장 시작
@@ -112,23 +112,39 @@ sequenceDiagram
 
 ## 스케줄러 작업 목록
 
-`backend/scheduler/crawler_scheduler.py` - APScheduler 기반 크롤링 스케줄러:
-- 뉴스 크롤링 (10분 간격)
-- 종목별 뉴스 검색 (10분 간격)
-- DART 공시 (5분 간격)
-- KIS 일봉 수집 (매일 15:40)
-- KIS 1분봉 수집 (1분 간격, 장 시간만)
-- KIS 시장 데이터 (5분 간격, 장 시간만)
-- 투자 리포트 생성 (10:00, 13:00, 15:45)
-- 모델 평가 생성 (매일 16:30)
-- 뉴스-주가 매칭 (매일 15:40)
-- 뉴스 임베딩 (매일 16:00)
-- 자동 알림 (10분 간격)
-- 투자자별 매매동향 (매일 16:00)
-- 시간외 거래 가격 (매일 18:00)
-- 업종/지수 일자별 (매일 18:00)
-- 상품정보 (매주 일요일 01:00)
-- 재무비율 (매주 일요일 02:00)
+`backend/scheduler/crawler_scheduler.py` - AsyncIOScheduler 기반 크롤링 스케줄러:
+
+### 데이터 수집 (CronTrigger - 0,10,20,30,40,50분)
+- **뉴스 크롤링**: 네이버, 한국경제, 매일경제, Reddit (10분 간격)
+- **종목별 뉴스 검색**: 네이버 검색 API (10분 간격)
+- **DART 공시**: 5분 간격
+- **자동 알림**: 10분 간격 (predicted_at 기준 필터링)
+
+### AI 분석 (CronTrigger - 5,15,25,35,45,55분)
+- **투자 리포트 생성**: 10:05, 13:05, 15:45 (병렬 처리, 80s → 30s)
+- **뉴스 임베딩**: 매일 16:05 (KoSimCSE 로컬 모델)
+
+### 시장 데이터 (장 시간 기반)
+- **KIS 일봉 수집**: 매일 15:40
+- **KIS 1분봉 수집**: ~~1분 간격~~ → **비활성화** (19,500 API 호출 절감)
+- **KIS 시장 데이터**: 5분 간격 (호가, 현재가)
+- **시간외 거래 가격**: 매일 18:00
+
+### 평가 및 매칭 (종가 후)
+- **뉴스-주가 매칭**: 매일 15:40
+- **모델 평가 생성**: 매일 16:30
+
+### 주간 배치 작업
+- **투자자별 매매동향**: 매일 16:00
+- **업종/지수 일자별**: 매일 18:00
+- **상품정보**: 매주 일요일 01:00
+- **재무비율**: 매주 일요일 02:00
+
+**주요 변경사항 (2025-11-24)**:
+- BackgroundScheduler → AsyncIOScheduler (Segmentation Fault 해결)
+- IntervalTrigger → CronTrigger (뉴스 수집과 AI 분석 분리)
+- predicted_at 필드 활용 (알림 전송 중복 방지)
+- 1분봉 수집 비활성화 (API 비용 절감)
 
 ## 관련 문서
 
