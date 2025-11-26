@@ -2,9 +2,13 @@
 백그라운드 예측 생성 유틸리티
 
 새 모델 추가 또는 A/B 설정 변경 시 자동으로 예측을 생성합니다.
+
+설계 원칙:
+- 완전 비동기 (async/await) - threading 사용 안함
+- 메인 이벤트 루프에서 asyncio.create_task()로 실행
+- ModelLoadLock과 동일한 이벤트 루프 공유
 """
 import logging
-import threading
 import asyncio
 from typing import List, Optional
 from datetime import datetime, timedelta
@@ -32,59 +36,85 @@ def generate_predictions_for_news(
     Args:
         news_id: 뉴스 ID
         model_ids: 예측을 생성할 모델 ID 리스트
-        in_background: 백그라운드 스레드로 실행 여부
+        in_background: 백그라운드 태스크로 실행 여부
         task_id: 진행 상태 추적용 task ID
     """
     if in_background:
-        thread = threading.Thread(
-            target=_generate_predictions_worker,
-            args=(news_id, model_ids, task_id),
-            daemon=True
-        )
-        thread.start()
-        logger.info(f"백그라운드 예측 생성 시작: news_id={news_id}, models={model_ids}")
+        # 메인 이벤트 루프에서 비동기 태스크로 실행
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_generate_predictions_async(news_id, model_ids, task_id))
+            logger.info(f"백그라운드 예측 생성 시작: news_id={news_id}, models={model_ids}")
+        except RuntimeError:
+            # 이벤트 루프가 없는 경우 동기 실행
+            logger.warning("이벤트 루프 없음, 동기 실행으로 전환")
+            asyncio.run(_generate_predictions_async(news_id, model_ids, task_id))
     else:
-        _generate_predictions_worker(news_id, model_ids, task_id)
+        asyncio.run(_generate_predictions_async(news_id, model_ids, task_id))
 
 
-def _generate_predictions_worker(news_id: int, model_ids: List[int], task_id: Optional[str] = None) -> None:
-    """백그라운드 워커: 예측 생성 실행"""
-    db = SessionLocal()
+async def _generate_predictions_async(
+    news_id: int,
+    model_ids: List[int],
+    task_id: Optional[str] = None
+) -> None:
+    """비동기 예측 생성 워커
+
+    Note: DB 세션은 각 작업마다 새로 생성하고 즉시 닫습니다.
+          Supabase 연결이 오래 지속되면 SSL 연결이 끊어질 수 있기 때문입니다.
+    """
     tracker = get_tracker() if task_id else None
 
     try:
-        # 뉴스 조회
-        news = db.query(NewsArticle).filter(NewsArticle.id == news_id).first()
-        if not news:
-            logger.warning(f"뉴스를 찾을 수 없음: news_id={news_id}")
-            return
+        # 뉴스 조회 (별도 세션)
+        db = SessionLocal()
+        try:
+            news = db.query(NewsArticle).filter(NewsArticle.id == news_id).first()
+            if not news:
+                logger.warning(f"뉴스를 찾을 수 없음: news_id={news_id}")
+                return
+
+            # 필요한 데이터만 추출 후 세션 닫기
+            news_title = news.title
+            news_content = news.content
+            news_stock_code = news.stock_code
+        finally:
+            db.close()
 
         predictor = get_predictor()
-        vector_search = asyncio.run(get_vector_search())
+        vector_search = await get_vector_search()
 
-        # 유사 뉴스 검색
-        news_text = f"{news.title}\n{news.content}"
-        similar_news = asyncio.run(vector_search.get_news_with_price_changes(
-            news_text=news_text,
-            stock_code=news.stock_code,
-            db=db,
-            top_k=5,
-            similarity_threshold=0.5,
-        ))
+        # 유사 뉴스 검색 (별도 세션)
+        db = SessionLocal()
+        try:
+            news_text = f"{news_title}\n{news_content}"
+            similar_news = await vector_search.get_news_with_price_changes(
+                news_text=news_text,
+                stock_code=news_stock_code,
+                db=db,
+                top_k=5,
+                similarity_threshold=0.5,
+            )
+        finally:
+            db.close()
 
         current_news_data = {
-            "title": news.title,
-            "content": news.content,
-            "stock_code": news.stock_code,
+            "title": news_title,
+            "content": news_content,
+            "stock_code": news_stock_code,
         }
 
         # 각 모델별로 예측 생성
         for model_id in model_ids:
-            # 이미 예측이 있는지 확인
-            existing = db.query(Prediction).filter(
-                Prediction.news_id == news_id,
-                Prediction.model_id == model_id
-            ).first()
+            # 이미 예측이 있는지 확인 (별도 세션)
+            db = SessionLocal()
+            try:
+                existing = db.query(Prediction).filter(
+                    Prediction.news_id == news_id,
+                    Prediction.model_id == model_id
+                ).first()
+            finally:
+                db.close()
 
             if existing:
                 logger.debug(f"예측 이미 존재: news_id={news_id}, model_id={model_id}")
@@ -97,20 +127,24 @@ def _generate_predictions_worker(news_id: int, model_ids: List[int], task_id: Op
                     logger.warning(f"모델을 찾을 수 없음: model_id={model_id}")
                     continue
 
-                # _predict_with_model() 호출 시 올바른 파라미터 전달
-                prediction_data = predictor._predict_with_model(
-                    client=model_info["client"],
-                    model_name=model_info["model_identifier"],
-                    provider=model_info["provider"],
-                    prompt=predictor._build_prompt(current_news_data, similar_news),
-                    similar_count=len(similar_news),
+                # _predict_with_model() 호출 (동기 함수이므로 executor에서 실행)
+                loop = asyncio.get_running_loop()
+                prediction_data = await loop.run_in_executor(
+                    None,
+                    lambda: predictor._predict_with_model(
+                        client=model_info["client"],
+                        model_name=model_info["model_identifier"],
+                        provider=model_info["provider"],
+                        prompt=predictor._build_prompt(current_news_data, similar_news),
+                        similar_count=len(similar_news),
+                    )
                 )
 
                 if prediction_data:
                     predictor._save_model_prediction(
                         news_id=news_id,
                         model_id=model_id,
-                        stock_code=news.stock_code,
+                        stock_code=news_stock_code,
                         prediction_data=prediction_data,
                     )
                     logger.info(f"✅ 예측 생성 완료: news_id={news_id}, model_id={model_id}")
@@ -134,8 +168,6 @@ def _generate_predictions_worker(news_id: int, model_ids: List[int], task_id: Op
 
     except Exception as e:
         logger.error(f"백그라운드 예측 워커 오류: {e}", exc_info=True)
-    finally:
-        db.close()
 
 
 def generate_predictions_for_recent_news(
