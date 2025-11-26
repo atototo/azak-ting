@@ -26,14 +26,21 @@ logger = logging.getLogger(__name__)
 class OrderbookCollector:
     """호가 데이터 수집기"""
 
-    def __init__(self, batch_size: int = 10):
+    def __init__(self, batch_size: int = 10, max_concurrent: int = 5):
+        """
+        Args:
+            batch_size: 배치 크기 (한 번에 처리할 종목 수)
+            max_concurrent: 최대 동시 API 호출 수
+        """
         self.batch_size = batch_size
+        self.max_concurrent = max_concurrent
+        self.semaphore = asyncio.Semaphore(max_concurrent)
         self.collected_count = 0
         self.failed_count = 0
 
     async def collect_orderbook(self, stock_code: str) -> Dict[str, Any]:
         """
-        단일 종목의 호가 데이터 수집
+        단일 종목의 호가 데이터 수집 (Semaphore로 동시 실행 제한)
 
         Args:
             stock_code: 종목 코드
@@ -41,37 +48,38 @@ class OrderbookCollector:
         Returns:
             수집 결과 딕셔너리
         """
-        try:
-            client = await get_kis_client()
-            result = await client.get_orderbook(stock_code=stock_code, priority="low")
+        async with self.semaphore:
+            try:
+                client = await get_kis_client()
+                result = await client.get_orderbook(stock_code=stock_code, priority="low")
 
-            output1 = result.get("output1", {})
-            if not output1:
-                logger.warning(f"⚠️  {stock_code}: 호가 데이터 없음")
+                output1 = result.get("output1", {})
+                if not output1:
+                    logger.warning(f"⚠️  {stock_code}: 호가 데이터 없음")
+                    return {
+                        "stock_code": stock_code,
+                        "status": "skipped",
+                        "error": "No data"
+                    }
+
+                # DB 저장
+                await self._save_to_db(stock_code, output1)
+                self.collected_count += 1
+                logger.info(f"✅ {stock_code}: 호가 저장 완료")
+
                 return {
                     "stock_code": stock_code,
-                    "status": "skipped",
-                    "error": "No data"
+                    "status": "success"
                 }
 
-            # DB 저장
-            await self._save_to_db(stock_code, output1)
-            self.collected_count += 1
-            logger.info(f"✅ {stock_code}: 호가 저장 완료")
-
-            return {
-                "stock_code": stock_code,
-                "status": "success"
-            }
-
-        except Exception as e:
-            self.failed_count += 1
-            logger.error(f"❌ {stock_code}: 호가 수집 실패 - {e}")
-            return {
-                "stock_code": stock_code,
-                "status": "failed",
-                "error": str(e)
-            }
+            except Exception as e:
+                self.failed_count += 1
+                logger.error(f"❌ {stock_code}: 호가 수집 실패 - {e}")
+                return {
+                    "stock_code": stock_code,
+                    "status": "failed",
+                    "error": str(e)
+                }
 
     async def _save_to_db(self, stock_code: str, data: Dict[str, Any]) -> None:
         """호가 데이터를 DB에 저장"""
@@ -182,43 +190,51 @@ class OrderbookCollector:
 class CurrentPriceCollector:
     """현재가 데이터 수집기"""
 
-    def __init__(self, batch_size: int = 10):
+    def __init__(self, batch_size: int = 10, max_concurrent: int = 5):
+        """
+        Args:
+            batch_size: 배치 크기 (한 번에 처리할 종목 수)
+            max_concurrent: 최대 동시 API 호출 수
+        """
         self.batch_size = batch_size
+        self.max_concurrent = max_concurrent
+        self.semaphore = asyncio.Semaphore(max_concurrent)
         self.collected_count = 0
         self.failed_count = 0
 
     async def collect_current_price(self, stock_code: str) -> Dict[str, Any]:
-        """단일 종목의 현재가 데이터 수집"""
-        try:
-            client = await get_kis_client()
-            result = await client.get_current_price(stock_code=stock_code, priority="low")
+        """단일 종목의 현재가 데이터 수집 (Semaphore로 동시 실행 제한)"""
+        async with self.semaphore:
+            try:
+                client = await get_kis_client()
+                result = await client.get_current_price(stock_code=stock_code, priority="low")
 
-            output = result.get("output", {})
-            if not output:
-                logger.warning(f"⚠️  {stock_code}: 현재가 데이터 없음")
+                output = result.get("output", {})
+                if not output:
+                    logger.warning(f"⚠️  {stock_code}: 현재가 데이터 없음")
+                    return {
+                        "stock_code": stock_code,
+                        "status": "skipped",
+                        "error": "No data"
+                    }
+
+                await self._save_to_db(stock_code, output)
+                self.collected_count += 1
+                logger.info(f"✅ {stock_code}: 현재가 저장 완료")
+
                 return {
                     "stock_code": stock_code,
-                    "status": "skipped",
-                    "error": "No data"
+                    "status": "success"
                 }
 
-            await self._save_to_db(stock_code, output)
-            self.collected_count += 1
-            logger.info(f"✅ {stock_code}: 현재가 저장 완료")
-
-            return {
-                "stock_code": stock_code,
-                "status": "success"
-            }
-
-        except Exception as e:
-            self.failed_count += 1
-            logger.error(f"❌ {stock_code}: 현재가 수집 실패 - {e}")
-            return {
-                "stock_code": stock_code,
-                "status": "failed",
-                "error": str(e)
-            }
+            except Exception as e:
+                self.failed_count += 1
+                logger.error(f"❌ {stock_code}: 현재가 수집 실패 - {e}")
+                return {
+                    "stock_code": stock_code,
+                    "status": "failed",
+                    "error": str(e)
+                }
 
     async def _save_to_db(self, stock_code: str, data: Dict[str, Any]) -> None:
         """현재가 데이터를 DB에 저장"""
@@ -282,8 +298,15 @@ class CurrentPriceCollector:
 class InvestorTradingCollector:
     """투자자별 매매동향 수집기"""
 
-    def __init__(self, batch_size: int = 5):
+    def __init__(self, batch_size: int = 5, max_concurrent: int = 5):
+        """
+        Args:
+            batch_size: 배치 크기 (한 번에 처리할 종목 수)
+            max_concurrent: 최대 동시 API 호출 수
+        """
         self.batch_size = batch_size
+        self.max_concurrent = max_concurrent
+        self.semaphore = asyncio.Semaphore(max_concurrent)
         self.collected_count = 0
         self.failed_count = 0
 
@@ -293,43 +316,44 @@ class InvestorTradingCollector:
         start_date: Optional[str] = None,
         end_date: Optional[str] = None
     ) -> Dict[str, Any]:
-        """단일 종목의 투자자별 매매동향 수집"""
-        try:
-            client = await get_kis_client()
-            result = await client.get_investor_trading(
-                priority="low",
-                stock_code=stock_code,
-                start_date=start_date,
-                end_date=end_date
-            )
+        """단일 종목의 투자자별 매매동향 수집 (Semaphore로 동시 실행 제한)"""
+        async with self.semaphore:
+            try:
+                client = await get_kis_client()
+                result = await client.get_investor_trading(
+                    priority="low",
+                    stock_code=stock_code,
+                    start_date=start_date,
+                    end_date=end_date
+                )
 
-            output = result.get("output", [])
-            if not output:
-                logger.warning(f"⚠️  {stock_code}: 투자자 데이터 없음")
+                output = result.get("output", [])
+                if not output:
+                    logger.warning(f"⚠️  {stock_code}: 투자자 데이터 없음")
+                    return {
+                        "stock_code": stock_code,
+                        "status": "skipped",
+                        "error": "No data"
+                    }
+
+                saved = await self._save_to_db(stock_code, output)
+                self.collected_count += saved
+                logger.info(f"✅ {stock_code}: 투자자 데이터 {saved}건 저장")
+
                 return {
                     "stock_code": stock_code,
-                    "status": "skipped",
-                    "error": "No data"
+                    "status": "success",
+                    "saved": saved
                 }
 
-            saved = await self._save_to_db(stock_code, output)
-            self.collected_count += saved
-            logger.info(f"✅ {stock_code}: 투자자 데이터 {saved}건 저장")
-
-            return {
-                "stock_code": stock_code,
-                "status": "success",
-                "saved": saved
-            }
-
-        except Exception as e:
-            self.failed_count += 1
-            logger.error(f"❌ {stock_code}: 투자자 데이터 수집 실패 - {e}")
-            return {
-                "stock_code": stock_code,
-                "status": "failed",
-                "error": str(e)
-            }
+            except Exception as e:
+                self.failed_count += 1
+                logger.error(f"❌ {stock_code}: 투자자 데이터 수집 실패 - {e}")
+                return {
+                    "stock_code": stock_code,
+                    "status": "failed",
+                    "error": str(e)
+                }
 
     async def _save_to_db(self, stock_code: str, data: List[Dict[str, Any]]) -> int:
         """투자자별 매매동향을 DB에 저장"""
@@ -524,47 +548,55 @@ class SectorIndexCollector:
 class OvertimePriceCollector:
     """시간외 거래 가격 수집기"""
 
-    def __init__(self, batch_size: int = 10):
+    def __init__(self, batch_size: int = 10, max_concurrent: int = 5):
+        """
+        Args:
+            batch_size: 배치 크기 (한 번에 처리할 종목 수)
+            max_concurrent: 최대 동시 API 호출 수
+        """
         self.batch_size = batch_size
+        self.max_concurrent = max_concurrent
+        self.semaphore = asyncio.Semaphore(max_concurrent)
         self.collected_count = 0
         self.failed_count = 0
 
     async def collect_overtime_prices(self, stock_code: str) -> Dict[str, Any]:
-        """단일 종목의 시간외 거래 가격 수집 (과거 30일)"""
-        try:
-            client = await get_kis_client()
-            result = await client.get_overtime_daily_prices(stock_code=stock_code, priority="low")
+        """단일 종목의 시간외 거래 가격 수집 (과거 30일, Semaphore로 동시 실행 제한)"""
+        async with self.semaphore:
+            try:
+                client = await get_kis_client()
+                result = await client.get_overtime_daily_prices(stock_code=stock_code, priority="low")
 
-            # output2에 일자별 데이터 있음
-            output2 = result.get("output2", [])
-            if not output2:
-                logger.warning(f"⚠️  {stock_code}: 시간외 거래 데이터 없음")
+                # output2에 일자별 데이터 있음
+                output2 = result.get("output2", [])
+                if not output2:
+                    logger.warning(f"⚠️  {stock_code}: 시간외 거래 데이터 없음")
+                    return {
+                        "stock_code": stock_code,
+                        "status": "skipped",
+                        "saved": 0,
+                        "error": "No data"
+                    }
+
+                saved_count = await self._save_to_db(stock_code, output2)
+                self.collected_count += 1
+                logger.info(f"✅ {stock_code}: 시간외 거래 데이터 {saved_count}건 저장")
+
                 return {
                     "stock_code": stock_code,
-                    "status": "skipped",
-                    "saved": 0,
-                    "error": "No data"
+                    "status": "success",
+                    "saved": saved_count
                 }
 
-            saved_count = await self._save_to_db(stock_code, output2)
-            self.collected_count += 1
-            logger.info(f"✅ {stock_code}: 시간외 거래 데이터 {saved_count}건 저장")
-
-            return {
-                "stock_code": stock_code,
-                "status": "success",
-                "saved": saved_count
-            }
-
-        except Exception as e:
-            self.failed_count += 1
-            logger.error(f"❌ {stock_code}: 시간외 거래 데이터 수집 실패 - {e}")
-            return {
-                "stock_code": stock_code,
-                "status": "failed",
-                "saved": 0,
-                "error": str(e)
-            }
+            except Exception as e:
+                self.failed_count += 1
+                logger.error(f"❌ {stock_code}: 시간외 거래 데이터 수집 실패 - {e}")
+                return {
+                    "stock_code": stock_code,
+                    "status": "failed",
+                    "saved": 0,
+                    "error": str(e)
+                }
 
     async def _save_to_db(self, stock_code: str, data: List[Dict[str, Any]]) -> int:
         """시간외 거래 데이터를 DB에 저장 (일자별)"""
