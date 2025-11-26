@@ -1,0 +1,83 @@
+name: 'azak-feature-intro'
+description: '이미 구현된 Azak 기능 소개 블로그 자동 생성 (화면 + 설명 중심)'
+
+# Paths
+installed_path: '{project-root}/.bmad/custom/workflows/azak-feature-intro'
+template: '{installed_path}/template.md'
+instructions: '{installed_path}/instructions.md'
+validation: '{installed_path}/checklist.md'
+
+# Critical variables from config
+config_source: '{project-root}/.bmad/bmb/config.yaml'
+output_folder: '{config_source}:output_folder'
+user_name: '{config_source}:user_name'
+communication_language: '{config_source}:communication_language'
+document_output_language: '{config_source}:document_output_language'
+date: system-generated
+
+# Project settings
+project_path: '/Users/young/ai-work/craveny'
+project_backend_path: '{project_path}/backend'
+project_frontend_path: '{project_path}/frontend'
+project_docs_path: '{project_path}/docs'
+
+# Output
+default_output_file: '{output_folder}/blog-posts/feature-{{feature_slug}}-{{date}}.md'
+
+# Invocation control
+standalone: true
+
+# Azak Preview URL settings
+azak_base_url: 'https://azak.ngrok.app/preview'
+azak_token: '09d1cddeaf2e87bb61cf7a1f98bba17ad941f3e5eb9ef40f83719a97b332ef19'
+
+# Preview paths
+azak_dashboard_path: '/dashboard'
+azak_stocks_list_path: '/stocks'
+azak_stock_detail_path: '/stocks/{stock_code}'
+azak_custom_path: ''
+
+# Playwright MCP settings
+screenshot_output: '{project-root}/.playwright-mcp'
+
+# GIF 자동 생성 설정
+gif_enabled: false         # true로 설정하면 GIF 자동 생성
+gif_duration: 5           # GIF 길이 (초) - 1초마다 1장 캡처
+gif_framerate: 2          # 초당 프레임 (1-5 추천, 낮을수록 느림)
+gif_scale_width: 800      # GIF 너비 (픽셀, -1은 원본)
+gif_output: '{screenshot_output}'  # GIF 저장 위치
+
+# Input parameters (사용자가 제공)
+feature_name: ''          # 예: "비동기 리포트 생성 시스템"
+feature_slug: ''          # 자동 생성: "async-report-system"
+feature_description: ''   # 간단한 설명 (1-2문장)
+key_features: ''          # 주요 기능들 (쉼표로 구분)
+related_files: ''         # (선택) 관련 파일 경로
+preview_urls: ''          # (필수) 프리뷰할 URL들
+gif_urls: ''              # (선택) GIF로 만들 URL들 (쉼표로 구분)
+problem_context: ''       # (선택) 배경 - 어떤 문제를 해결하는 기능인지
+tech_highlights: ''       # (선택) 기술적 하이라이트
+
+# 톤&매너 설정 (기능 소개 블로그)
+writing_style:
+  tone: "친근한 설명 + 약간의 개발자 톤"
+  avoid:
+    - "마침표 과다"
+    - "과도한 격식체"
+    - "불릿 포인트만 나열"
+    - "이모지 과다 (섹션당 0~1개)"
+  use:
+    - "이 기능은 ~해요, ~할 수 있어요"
+    - "간결한 설명 + 화면 중심"
+    - "사용 방법 단계별 설명"
+    - "필요시 구어체 종결어미"
+    - "코드는 핵심만 (선택적)"
+
+# 블로그 컨셉
+blog_concept: "기능 소개 & 사용 가이드 (친절한 설명서)"
+blogger_persona: "Azak 개발자, 만든 기능 자랑하고 싶음"
+
+# 필수 요소
+screenshots_required: true   # 화면 캡처 필수
+code_blocks_required: false  # 코드는 선택적
+usage_guide_required: true   # 사용 방법 가이드 필수

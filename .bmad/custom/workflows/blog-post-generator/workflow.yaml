@@ -16,7 +16,7 @@ document_output_language: '{config_source}:document_output_language'
 date: system-generated
 
 # Output
-default_output_file: '{output_folder}/blog-posts/{{stock_name}}-{{date}}.md'
+default_output_file: '{output_folder}/blog-posts/{{date}}/{{stock_code}}-{{stock_name}}.md'
 
 # Invocation control
 standalone: true
@@ -36,7 +36,7 @@ stock_name: ''              # 예: "삼성전자"
 category: '종목 분석'       # 기본값: 종목 분석
 
 # Playwright MCP settings
-screenshot_output: '{project-root}/.playwright-mcp'
+screenshot_output: '{output_folder}/blog-posts/{{date}}'
 
 # A/B 모델 정보
 model_a_name: ''           # 예: "Qwen3 Max"

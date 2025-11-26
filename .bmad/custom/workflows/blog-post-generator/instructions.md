@@ -178,27 +178,27 @@ Playwright MCP를 사용해 아래 페이지들을 캡처한다.
 <critical>
 블로그 본문에 이미지 삽입 시 마크다운 형식:
 
-⚠️ IMPORTANT: 이미지 경로는 반드시 상대 경로로 작성!
-- 블로그 포스트 위치: {output_folder}/blog-posts/{{stock_name}}-{{date}}.md
-- 이미지 위치: {screenshot_output}/{{stock_code}}-*.png
-- 올바른 상대 경로: ../../.playwright-mcp/{{stock_code}}-*.png
+⚠️ IMPORTANT: 이미지와 블로그 포스트는 같은 폴더에 저장!
+- 블로그 포스트 위치: {output_folder}/blog-posts/{{date}}/{{stock_code}}-{{stock_name}}.md
+- 이미지 위치: {output_folder}/blog-posts/{{date}}/{{stock_code}}-*.png
+- 올바른 상대 경로: ./{{stock_code}}-*.png (같은 폴더이므로 ./ 사용)
 
 주가 정보 섹션 직후 (실시간 이슈 섹션 전):
-- ![주가 차트 with AI 리포트](../../.playwright-mcp/{{stock_code}}-chart-section.png)
+- ![주가 차트 with AI 리포트](./{{stock_code}}-chart-section.png)
 - 섹션 제목: "📈 주가 차트로 보는 한 달"
 - 내용: 데이터 포인트 수, 최고가, 최저가, AI 리포트 생성 건수
 
 실시간 이슈 섹션 직후 (AI 리포트 확인 섹션 전):
-- ![최근 시장 동향 분석](../../.playwright-mcp/{{stock_code}}-market-trends.png)
+- ![최근 시장 동향 분석](./{{stock_code}}-market-trends.png)
 - 섹션 제목: "💡 최근 시장 동향도 심상치 않아요" (또는 상황에 맞게 변형)
 - 내용: 최근 감지된 시장 시그널 요약 (긍정/부정, 신뢰도, 영향도, 긴급도)
 
 AI 리포트 확인 섹션 (Model A/B 소개 직후):
-- ![종목 목록 화면](../../.playwright-mcp/{{stock_code}}-stocks-list.png)
-- ![종목 상세 분석 화면](../../.playwright-mcp/{{stock_code}}-stock-detail.png)
+- ![종목 목록 화면](./{{stock_code}}-stocks-list.png)
+- ![종목 상세 분석 화면](./{{stock_code}}-stock-detail.png)
 
 Model B 분석 직후:
-- ![Model A/B 비교 분석](../../.playwright-mcp/{{stock_code}}-models-comparison.png) ← 핵심 차별화 포인트!
+- ![Model A/B 비교 분석](./{{stock_code}}-models-comparison.png) ← 핵심 차별화 포인트!
 
 장황한 전체 화면보다 필요한 요소만 캡처해서 가독성을 높인다.
 Model A/B 나란히 비교되는 이미지가 서비스의 핵심 가치를 보여준다.
