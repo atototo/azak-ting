@@ -104,11 +104,10 @@ function DataSourceBadges({ dataSources }: { dataSources: string[] }) {
         return (
           <span
             key={key}
-            className={`px-3 py-1 rounded-full text-xs font-medium border ${
-              isUsed
+            className={`px-3 py-1 rounded-full text-xs font-medium border ${isUsed
                 ? 'bg-blue-100 text-blue-700 border-blue-300'
                 : 'bg-gray-100 text-gray-400 border-gray-300'
-            }`}
+              }`}
           >
             {isUsed ? '✅' : '❌'} {sourceLabels[key]}
           </span>
@@ -151,13 +150,12 @@ export default function StockDetailView({
         <div className="mb-4">
           <span className="text-sm font-medium text-gray-700">신뢰도: </span>
           <span
-            className={`px-3 py-1 rounded-full text-xs font-medium ${
-              summary.confidence_level === 'high'
+            className={`px-3 py-1 rounded-full text-xs font-medium ${summary.confidence_level === 'high'
                 ? 'bg-green-100 text-green-700'
                 : summary.confidence_level === 'medium'
-                ? 'bg-yellow-100 text-yellow-700'
-                : 'bg-red-100 text-red-700'
-            }`}
+                  ? 'bg-yellow-100 text-yellow-700'
+                  : 'bg-red-100 text-red-700'
+              }`}
           >
             {summary.confidence_level === 'high' && '높음 🟢'}
             {summary.confidence_level === 'medium' && '중간 🟡'}
@@ -231,38 +229,38 @@ export default function StockDetailView({
       {/* 리스크 및 기회 요인 */}
       {((summary.risk_factors && summary.risk_factors.length > 0) ||
         (summary.opportunity_factors && summary.opportunity_factors.length > 0)) && (
-        <div className="mb-4">
-          <h4 className="text-sm font-bold text-gray-700 mb-2">⚖️ 리스크 & 기회</h4>
-          <div className="space-y-2">
-            {summary.risk_factors && summary.risk_factors.length > 0 && (
-              <div className="bg-white rounded p-2 border-l-2 border-orange-400">
-                <h5 className="text-xs font-bold text-orange-700 mb-1">⚠️ 리스크</h5>
-                <ul className="space-y-1">
-                  {summary.risk_factors.map((risk, index) => (
-                    <li key={index} className="text-xs text-gray-700 flex items-start">
-                      <span className="mr-1 text-orange-500">•</span>
-                      <span>{risk}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {summary.opportunity_factors && summary.opportunity_factors.length > 0 && (
-              <div className="bg-white rounded p-2 border-l-2 border-teal-400">
-                <h5 className="text-xs font-bold text-teal-700 mb-1">💡 기회</h5>
-                <ul className="space-y-1">
-                  {summary.opportunity_factors.map((opportunity, index) => (
-                    <li key={index} className="text-xs text-gray-700 flex items-start">
-                      <span className="mr-1 text-teal-500">•</span>
-                      <span>{opportunity}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+          <div className="mb-4">
+            <h4 className="text-sm font-bold text-gray-700 mb-2">⚖️ 리스크 & 기회</h4>
+            <div className="space-y-2">
+              {summary.risk_factors && summary.risk_factors.length > 0 && (
+                <div className="bg-white rounded p-2 border-l-2 border-orange-400">
+                  <h5 className="text-xs font-bold text-orange-700 mb-1">⚠️ 리스크</h5>
+                  <ul className="space-y-1">
+                    {summary.risk_factors.map((risk, index) => (
+                      <li key={index} className="text-xs text-gray-700 flex items-start">
+                        <span className="mr-1 text-orange-500">•</span>
+                        <span>{risk}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {summary.opportunity_factors && summary.opportunity_factors.length > 0 && (
+                <div className="bg-white rounded p-2 border-l-2 border-teal-400">
+                  <h5 className="text-xs font-bold text-teal-700 mb-1">💡 기회</h5>
+                  <ul className="space-y-1">
+                    {summary.opportunity_factors.map((opportunity, index) => (
+                      <li key={index} className="text-xs text-gray-700 flex items-start">
+                        <span className="mr-1 text-teal-500">•</span>
+                        <span>{opportunity}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* 최종 추천 */}
       {summary.recommendation && (
@@ -305,9 +303,8 @@ export default function StockDetailView({
               <div>
                 <p className="text-sm text-gray-600">등락</p>
                 <p
-                  className={`text-xl font-semibold ${
-                    current_price.change_rate >= 0 ? "text-red-600" : "text-blue-600"
-                  }`}
+                  className={`text-xl font-semibold ${current_price.change_rate >= 0 ? "text-red-600" : "text-blue-600"
+                    }`}
                 >
                   {current_price.change_rate >= 0 ? "▲" : "▼"}{" "}
                   {Math.abs(current_price.change_rate)}%
@@ -348,11 +345,11 @@ export default function StockDetailView({
           <div className="bg-gradient-to-br from-slate-50 to-blue-50 rounded-2xl shadow-2xl p-8 mb-6 border border-indigo-100">
             {/* 헤더 */}
             <div className="mb-8 pb-6 border-b-2 border-indigo-200">
-              <div className="flex items-center justify-between">
-                <h2 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent flex items-center">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-0">
+                <h2 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent flex flex-wrap items-center">
                   <span className="mr-3 text-3xl">🤖</span> AI 종합 투자 리포트
                   {analysis_summary.ab_test_enabled && (
-                    <span className="ml-4 text-sm font-normal text-purple-600 bg-purple-100 px-3 py-1 rounded-full">
+                    <span className="ml-4 text-sm font-normal text-purple-600 bg-purple-100 px-3 py-1 rounded-full whitespace-nowrap mt-2 md:mt-0">
                       A/B Testing
                     </span>
                   )}
@@ -361,11 +358,10 @@ export default function StockDetailView({
                   <button
                     onClick={onForceUpdate}
                     disabled={updating}
-                    className={`px-4 py-2 rounded-md font-medium text-sm transition-colors ${
-                      updating
+                    className={`px-4 py-2 rounded-md font-medium text-sm transition-colors self-start md:self-auto ${updating
                         ? "bg-gray-400 cursor-not-allowed text-white"
                         : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-md"
-                    }`}
+                      }`}
                   >
                     {updating ? "업데이트 중..." : "🔄 리포트 업데이트"}
                   </button>
@@ -374,11 +370,10 @@ export default function StockDetailView({
 
               {/* 업데이트 메시지 */}
               {updateMessage && (
-                <div className={`mt-4 p-3 rounded-md ${
-                  updateMessage.type === 'success'
+                <div className={`mt-4 p-3 rounded-md ${updateMessage.type === 'success'
                     ? 'bg-green-50 border border-green-200 text-green-800'
                     : 'bg-red-50 border border-red-200 text-red-800'
-                }`}>
+                  }`}>
                   <p className="text-sm font-medium">{updateMessage.text}</p>
                 </div>
               )}
@@ -411,13 +406,12 @@ export default function StockDetailView({
                   <div className="mb-6">
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-base font-medium text-gray-700">분석 신뢰도:</span>
-                      <span className={`px-4 py-2 rounded-full text-sm font-medium border ${
-                        analysis_summary.confidence_level === 'high'
+                      <span className={`px-4 py-2 rounded-full text-sm font-medium border ${analysis_summary.confidence_level === 'high'
                           ? 'bg-green-100 text-green-700 border-green-300'
                           : analysis_summary.confidence_level === 'medium'
-                          ? 'bg-yellow-100 text-yellow-700 border-yellow-300'
-                          : 'bg-red-100 text-red-700 border-red-300'
-                      }`}>
+                            ? 'bg-yellow-100 text-yellow-700 border-yellow-300'
+                            : 'bg-red-100 text-red-700 border-red-300'
+                        }`}>
                         {analysis_summary.confidence_level === 'high' && '높음 🟢'}
                         {analysis_summary.confidence_level === 'medium' && '중간 🟡'}
                         {analysis_summary.confidence_level === 'low' && '낮음 🔴'}
@@ -549,49 +543,49 @@ export default function StockDetailView({
                 {/* Section 3: 리스크 및 기회 요인 */}
                 {((analysis_summary.risk_factors && analysis_summary.risk_factors.length > 0) ||
                   (analysis_summary.opportunity_factors && analysis_summary.opportunity_factors.length > 0)) && (
-                  <div className="mb-10">
-                    <div className="mb-4">
-                      <h3 className="text-xl font-bold text-gray-900 flex items-center">
-                        <span className="mr-3 text-2xl">⚖️</span> 리스크 및 기회 요인
-                      </h3>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      {/* Risk Factors */}
-                      {analysis_summary.risk_factors && analysis_summary.risk_factors.length > 0 && (
-                        <div className="bg-white rounded-xl p-5 shadow-md border-l-4 border-orange-400">
-                          <h4 className="text-lg font-bold text-orange-700 mb-4 flex items-center">
-                            <span className="mr-2 text-xl">⚠️</span> 리스크 요인
-                          </h4>
-                          <ul className="space-y-3">
-                            {analysis_summary.risk_factors.map((risk, index) => (
-                              <li key={index} className="text-sm text-gray-700 flex items-start">
-                                <span className="mr-2 text-orange-500 flex-shrink-0 font-bold">•</span>
-                                <span className="leading-relaxed">{risk}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
+                    <div className="mb-10">
+                      <div className="mb-4">
+                        <h3 className="text-xl font-bold text-gray-900 flex items-center">
+                          <span className="mr-3 text-2xl">⚖️</span> 리스크 및 기회 요인
+                        </h3>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        {/* Risk Factors */}
+                        {analysis_summary.risk_factors && analysis_summary.risk_factors.length > 0 && (
+                          <div className="bg-white rounded-xl p-5 shadow-md border-l-4 border-orange-400">
+                            <h4 className="text-lg font-bold text-orange-700 mb-4 flex items-center">
+                              <span className="mr-2 text-xl">⚠️</span> 리스크 요인
+                            </h4>
+                            <ul className="space-y-3">
+                              {analysis_summary.risk_factors.map((risk, index) => (
+                                <li key={index} className="text-sm text-gray-700 flex items-start">
+                                  <span className="mr-2 text-orange-500 flex-shrink-0 font-bold">•</span>
+                                  <span className="leading-relaxed">{risk}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
 
-                      {/* Opportunity Factors */}
-                      {analysis_summary.opportunity_factors && analysis_summary.opportunity_factors.length > 0 && (
-                        <div className="bg-white rounded-xl p-5 shadow-md border-l-4 border-teal-400">
-                          <h4 className="text-lg font-bold text-teal-700 mb-4 flex items-center">
-                            <span className="mr-2 text-xl">💡</span> 기회 요인
-                          </h4>
-                          <ul className="space-y-3">
-                            {analysis_summary.opportunity_factors.map((opportunity, index) => (
-                              <li key={index} className="text-sm text-gray-700 flex items-start">
-                                <span className="mr-2 text-teal-500 flex-shrink-0 font-bold">•</span>
-                                <span className="leading-relaxed">{opportunity}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
+                        {/* Opportunity Factors */}
+                        {analysis_summary.opportunity_factors && analysis_summary.opportunity_factors.length > 0 && (
+                          <div className="bg-white rounded-xl p-5 shadow-md border-l-4 border-teal-400">
+                            <h4 className="text-lg font-bold text-teal-700 mb-4 flex items-center">
+                              <span className="mr-2 text-xl">💡</span> 기회 요인
+                            </h4>
+                            <ul className="space-y-3">
+                              {analysis_summary.opportunity_factors.map((opportunity, index) => (
+                                <li key={index} className="text-sm text-gray-700 flex items-start">
+                                  <span className="mr-2 text-teal-500 flex-shrink-0 font-bold">•</span>
+                                  <span className="leading-relaxed">{opportunity}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
                 {/* Section 4: 최종 추천 */}
                 {analysis_summary.recommendation && (
@@ -741,8 +735,8 @@ export default function StockDetailView({
                               news.source.includes('DART') || news.source.includes('금융감독')
                                 ? '공식공시'
                                 : news.source.includes('증권') || news.source.includes('리서치')
-                                ? '증권리포트'
-                                : '시장 정보'
+                                  ? '증권리포트'
+                                  : '시장 정보'
                             }
                           </span>
                           {isMounted && news.published_at && (

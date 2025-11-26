@@ -539,6 +539,22 @@ export default function StockChart({ stockCode }: StockChartProps) {
     return null;
   };
 
+  // Mobile detection
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    // Initial check
+    checkMobile();
+
+    // Listener
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   if (loading) {
     return (
       <div className="bg-white rounded-lg shadow p-6 mb-6">
@@ -571,28 +587,28 @@ export default function StockChart({ stockCode }: StockChartProps) {
 
   return (
     <div className="bg-white rounded-lg shadow p-6 mb-6">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4 md:gap-0">
         <h2 className="text-xl font-bold text-gray-900">
           📈 주가 차트 {reports.length > 0 && <span className="text-sm font-normal text-gray-600">with AI 리포트 ({reports.length}건)</span>}
         </h2>
 
         {/* 기간 선택 버튼 */}
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2 items-center self-end md:self-auto overflow-x-auto max-w-full pb-1 md:pb-0">
           <button
             onClick={() => setShowMarkers(!showMarkers)}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors border ${showMarkers
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors border whitespace-nowrap ${showMarkers
               ? "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100"
               : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
               }`}
           >
             {showMarkers ? "마커 숨기기" : "마커 보이기"}
           </button>
-          <div className="h-4 w-px bg-gray-300 mx-1" />
+          <div className="h-4 w-px bg-gray-300 mx-1 flex-shrink-0" />
           {(Object.keys(PERIOD_DAYS) as PeriodType[]).map((p) => (
             <button
               key={p}
               onClick={() => setPeriod(p)}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${period === p
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${period === p
                 ? "bg-indigo-600 text-white"
                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                 }`}
@@ -629,7 +645,10 @@ export default function StockChart({ stockCode }: StockChartProps) {
           <ComposedChart
             key={extendedData.length}
             data={extendedData.length > 0 ? extendedData : data}
-            margin={{ top: 20, right: 100, left: 0, bottom: 0 }}
+            margin={isMobile
+              ? { top: 20, right: 10, left: -20, bottom: 0 }
+              : { top: 20, right: 100, left: 0, bottom: 0 }
+            }
           >
             <defs>
               <linearGradient id="colorVolume" x1="0" y1="0" x2="0" y2="1">
@@ -680,7 +699,14 @@ export default function StockChart({ stockCode }: StockChartProps) {
               tickFormatter={formatDate}
               stroke="#6b7280"
               style={{ fontSize: "12px" }}
-              ticks={getXAxisTicks()}
+              ticks={getXAxisTicks().filter((_, i, arr) => {
+                // Mobile: Show fewer ticks (e.g., every 2nd or 3rd tick from the original set)
+                if (isMobile) {
+                  const step = Math.ceil(arr.length / 3); // Target ~3 ticks on mobile
+                  return i % step === 0;
+                }
+                return true;
+              })}
             />
 
             {/* 주가 Y축 (왼쪽) */}
@@ -689,18 +715,20 @@ export default function StockChart({ stockCode }: StockChartProps) {
               tickFormatter={formatPrice}
               stroke="#6b7280"
               style={{ fontSize: "12px" }}
-              width={80}
+              width={isMobile ? 40 : 80} // Reduced width further for mobile
               domain={['auto', (dataMax: number) => Math.round(dataMax * 1.15)]}
             />
 
-            {/* 거래량 Y축 (오른쪽) */}
+            {/* 거래량 Y축 (오른쪽) - 모바일에서는 숨김(hide) 처리하되 축은 존재해야 함 */}
             <YAxis
               yAxisId="volume"
               orientation="right"
               tickFormatter={formatVolume}
               stroke="#6b7280"
               style={{ fontSize: "12px" }}
-              label={{ value: '거래량', angle: 90, position: 'insideRight', offset: 10, style: { fill: '#6b7280', fontSize: '12px' } }}
+              width={isMobile ? 0 : 60} // Zero width on mobile
+              hide={isMobile} // Visually hide on mobile
+              label={isMobile ? undefined : { value: '거래량', angle: 90, position: 'insideRight', offset: 10, style: { fill: '#6b7280', fontSize: '12px' } }}
             />
 
             <Tooltip
@@ -715,7 +743,7 @@ export default function StockChart({ stockCode }: StockChartProps) {
 
             {/* 거래량 바 차트 (하단) */}
             <Bar
-              yAxisId="volume"
+              yAxisId="volume" // Always use volume axis
               dataKey="volume"
               fill="url(#colorVolume)"
               name="거래량"
@@ -728,7 +756,7 @@ export default function StockChart({ stockCode }: StockChartProps) {
               type="monotone"
               dataKey="high"
               stroke="#ef4444"
-              strokeWidth={1}
+              strokeWidth={isMobile ? 0.5 : 1} // Thinner on mobile
               dot={false}
               name="고가"
               opacity={0.5}
@@ -741,7 +769,7 @@ export default function StockChart({ stockCode }: StockChartProps) {
               type="monotone"
               dataKey="low"
               stroke="#3b82f6"
-              strokeWidth={1}
+              strokeWidth={isMobile ? 0.5 : 1} // Thinner on mobile
               dot={false}
               name="저가"
               opacity={0.5}
@@ -754,7 +782,7 @@ export default function StockChart({ stockCode }: StockChartProps) {
               type="monotone"
               dataKey="close"
               stroke="#10b981"
-              strokeWidth={2}
+              strokeWidth={isMobile ? 1.5 : 2} // Slightly thinner on mobile
               dot={false}
               name="종가"
               connectNulls
@@ -765,6 +793,11 @@ export default function StockChart({ stockCode }: StockChartProps) {
               // Different dash patterns for each model
               const dashPatterns = ["5 5", "10 5", "5 10", "3 3"];
 
+              // Base stroke width based on index
+              const baseWidth = 3 - (index * 0.5);
+              // Mobile stroke width (scaled down)
+              const mobileWidth = Math.max(1, baseWidth * 0.6);
+
               return (
                 <Line
                   key={model.id}
@@ -772,15 +805,17 @@ export default function StockChart({ stockCode }: StockChartProps) {
                   type="linear"
                   dataKey={`prediction_${model.id}`}
                   stroke={getModelColor(model.id)}
-                  strokeWidth={3 - (index * 0.5)} // Vary width: 3, 2.5, 2, 1.5
+                  strokeWidth={isMobile ? mobileWidth : baseWidth}
                   strokeDasharray={dashPatterns[index % dashPatterns.length]}
                   dot={false}
                   name={`${model.name} 예측`}
                   connectNulls
                 />
               );
-            })} {/* Model Labels at the end of prediction lines */}
-            {models.map((model) => {
+            })}
+
+            {/* Model Labels at the end of prediction lines - ONLY ON DESKTOP */}
+            {!isMobile && models.map((model) => {
               // Find the last point that actually has a prediction value for this model
               let lastPoint = null;
               let predictionValue = null;
