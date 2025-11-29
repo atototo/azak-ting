@@ -203,6 +203,45 @@ async def internal_generate_report(
     }
 
 
+class RunEmbeddingRequest(BaseModel):
+    """임베딩 실행 요청"""
+    batch_size: int = 500  # 기본값을 크게 설정 (일괄 처리용)
+
+
+@app.post("/internal/run-embedding")
+async def internal_run_embedding(
+    request: RunEmbeddingRequest,
+    background_tasks: BackgroundTasks
+):
+    """
+    뉴스 임베딩 수동 실행 (내부 API)
+
+    미임베딩 뉴스를 일괄 처리합니다.
+    기본 batch_size=500으로 한 번에 많이 처리합니다.
+
+    Args:
+        request: 임베딩 실행 요청 (batch_size)
+        background_tasks: FastAPI 백그라운드 태스크
+
+    Returns:
+        작업 시작 확인
+    """
+    from backend.llm.embedder import run_daily_embedding
+
+    logger.info(f"🔤 내부 API: 임베딩 수동 실행 요청 - batch_size={request.batch_size}")
+
+    def _run_embedding_task():
+        success, fail = run_daily_embedding(batch_size=request.batch_size)
+        logger.info(f"✅ 임베딩 수동 실행 완료: 성공 {success}건, 실패 {fail}건")
+
+    background_tasks.add_task(_run_embedding_task)
+
+    return {
+        "success": True,
+        "message": f"임베딩 작업 시작 (batch_size={request.batch_size})",
+    }
+
+
 @app.post("/internal/generate-predictions")
 async def internal_generate_predictions(request: GeneratePredictionsRequest):
     """

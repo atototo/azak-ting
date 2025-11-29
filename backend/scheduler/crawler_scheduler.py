@@ -403,7 +403,7 @@ class CrawlerScheduler:
     def _embed_news(self) -> None:
         """
         뉴스 임베딩 작업을 실행합니다.
-        매일 장 마감 후(16:10, 투자자별 매매동향 수집 후 10분)에 실행됩니다.
+        매 시간 7분에 실행됩니다 (뉴스 크롤링/AI 분석과 겹치지 않는 시간).
         """
         logger.info("=" * 40)
         logger.info(f"🔤 뉴스 임베딩 시작 (#{self.embedding_total_runs + 1})")
@@ -930,8 +930,9 @@ class CrawlerScheduler:
             replace_existing=True,
         )
 
-        # 뉴스 임베딩 작업 등록 (매일 16:10 - 투자자별 매매동향 수집 후 10분)
-        embedding_trigger = CronTrigger(hour=16, minute=10)
+        # 뉴스 임베딩 작업 등록 (매 시간 7분 - 뉴스 크롤링/AI 분석과 겹치지 않는 시간)
+        # 기존: 하루 1번(16:10) → 변경: 1시간마다 (실시간성 개선)
+        embedding_trigger = CronTrigger(minute=7)
         self.scheduler.add_job(
             func=self._embed_news,
             trigger=embedding_trigger,
@@ -1087,7 +1088,7 @@ class CrawlerScheduler:
         # logger.info("   - KIS 1분봉 수집: 매 1분 (장 시간만)")  # 비활성화
         logger.info("   - KIS 시장 데이터: 매 5분 (호가, 현재가, 업종지수 - 장 시간만)")
         logger.info("   - 투자자별 매매동향: 매일 16:00 (장 마감 후)")
-        logger.info("   - 뉴스 임베딩: 매일 16:10 (매매동향 수집 후 10분)")
+        logger.info("   - 뉴스 임베딩: 매 시간 7분 (1시간마다)")
         logger.info("   - 모델 평가 생성: 매일 16:30 (리포트 생성 후 30분)")
         logger.info("   - KIS 업종/지수 일자별: 매일 18:00 (시간외 거래 종료 후)")
         logger.info("   - 시간외 거래 가격: 매일 18:10 (업종/지수 수집 후 10분)")
