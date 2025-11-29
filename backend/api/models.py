@@ -158,23 +158,31 @@ async def create_model(model: ModelCreate):
         except Exception as e:
             logger.warning(f"Predictor 재로드 실패: {e}")
 
-        # 백그라운드에서 최근 뉴스에 대해 예측 생성
+        # 스케줄러 서버로 예측 생성 요청
         try:
-            from backend.utils.background_prediction import generate_predictions_for_recent_news
+            import httpx
 
-            stats = generate_predictions_for_recent_news(
-                model_ids=[new_model.id],
-                limit=20,  # 최근 20개 뉴스
-                days=7,    # 최근 7일
-                in_background=True
-            )
+            logger.info(f"🔄 예측 생성 요청 → 스케줄러 서버: model={new_model.name}")
+
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    "http://localhost:8001/internal/generate-predictions",
+                    json={
+                        "model_ids": [new_model.id],
+                        "limit": 20,  # 최근 20개 뉴스
+                        "days": 7,    # 최근 7일
+                    }
+                )
+                response.raise_for_status()
+                stats = response.json()
+
             logger.info(
-                f"🔄 백그라운드 예측 생성 시작: "
+                f"✅ 예측 생성 요청 완료: "
                 f"model={new_model.name}, "
-                f"total={stats['total']}, scheduled={stats['scheduled']}"
+                f"total={stats['total']}, scheduled={stats['scheduled']}, task_id={stats.get('task_id')}"
             )
         except Exception as e:
-            logger.warning(f"백그라운드 예측 생성 스케줄 실패: {e}")
+            logger.warning(f"스케줄러 서버 예측 생성 요청 실패: {e}")
 
         return new_model
 

@@ -1,21 +1,18 @@
 """
-Azak FastAPI 애플리케이션 진입점
+Azak FastAPI 애플리케이션 진입점 (API 서버)
+
+역할:
+- 데이터 조회 API 제공 (읽기 위주)
+- 간단한 데이터 생성
+- 무거운 작업은 스케줄러 서버로 위임
+
+주의: ML 모델 로드 및 스케줄러는 scheduler_main.py에서 실행됨
 """
-import os
-
-# 0. 환경 변수 설정 (가장 먼저 실행)
-# PM2/Multiprocessing 환경에서 PyTorch/FAISS 충돌 방지
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
-os.environ["NUMEXPR_NUM_THREADS"] = "1"
-
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import settings
-from backend.scheduler.crawler_scheduler import get_crawler_scheduler
 
 
 # 로깅 설정
@@ -67,45 +64,15 @@ app.include_router(preview_links.router)  # 공개 프리뷰 링크 (tags는 rou
 
 @app.on_event("startup")
 async def startup_event():
-    """애플리케이션 시작 이벤트"""
-    logger.info(f"🚀 {settings.APP_NAME} 애플리케이션 시작")
-
-    # 1️⃣ ML 모델 사전 로드 (Eager Loading) - Segmentation Fault 방지
-    # 메인 스레드에서 안전하게 모델을 로드한 후 스케줄러 시작
-    try:
-        logger.info("📦 ML 모델 로드 시작...")
-
-        from backend.llm.embedder import get_news_embedder
-        from backend.llm.predictor import get_predictor
-
-        embedder = get_news_embedder()
-        # Lazy loading 트리거 - 실제로 모델을 메모리에 로드
-        _ = embedder.tokenizer
-        _ = embedder.model
-        logger.info("✅ 임베딩 모델 로드 완료 (메인 스레드)")
-
-        predictor = get_predictor()
-        logger.info("✅ 예측 모델 로드 완료 (메인 스레드)")
-
-    except Exception as e:
-        logger.error(f"❌ ML 모델 로드 실패: {e}", exc_info=True)
-        # 모델 로드 실패 시에도 앱은 계속 실행 (예측 기능만 비활성화)
-
-    # 2️⃣ APScheduler 시작 (뉴스: 10분, 주가: 1분)
-    scheduler = get_crawler_scheduler(news_interval_minutes=10, stock_interval_minutes=1)
-    scheduler.start()
-    logger.info("✅ 크롤러 스케줄러 시작 (뉴스 + 주가)")
+    """API 서버 시작 이벤트"""
+    logger.info(f"🚀 {settings.APP_NAME} API 서버 시작 (가벼운 모드)")
+    logger.info("📝 ML 모델 및 스케줄러는 스케줄러 서버에서 실행됩니다")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """애플리케이션 종료 이벤트"""
-    logger.info(f"🛑 {settings.APP_NAME} 애플리케이션 종료")
-
-    # APScheduler 종료
-    scheduler = get_crawler_scheduler()
-    scheduler.shutdown()
-    logger.info("✅ 크롤러 스케줄러 종료 (뉴스 + 주가)")
+    """API 서버 종료 이벤트"""
+    logger.info(f"🛑 {settings.APP_NAME} API 서버 종료")
 
 
 @app.get("/")

@@ -193,26 +193,34 @@ async def update_ab_config(config: ABConfigCreate):
             f"✅ A/B 설정 변경 완료: {model_a.name} vs {model_b.name}"
         )
 
-        # 백그라운드에서 최근 뉴스에 대해 예측 생성 (예측이 없는 경우만)
+        # 스케줄러 서버로 예측 생성 요청 (예측이 없는 경우만)
         prediction_task_id = None
         try:
-            from backend.utils.background_prediction import generate_predictions_for_recent_news
+            import httpx
 
-            stats = generate_predictions_for_recent_news(
-                model_ids=[new_config.model_a_id, new_config.model_b_id],
-                limit=20,  # 최근 20개 뉴스
-                days=7,    # 최근 7일
-                in_background=True
-            )
+            logger.info(f"🔄 A/B 모델 예측 생성 요청 → 스케줄러 서버: {model_a.name} vs {model_b.name}")
+
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    "http://localhost:8001/internal/generate-predictions",
+                    json={
+                        "model_ids": [new_config.model_a_id, new_config.model_b_id],
+                        "limit": 20,  # 최근 20개 뉴스
+                        "days": 7,    # 최근 7일
+                    }
+                )
+                response.raise_for_status()
+                stats = response.json()
+
             prediction_task_id = stats.get('task_id')
             logger.info(
-                f"🔄 A/B 모델 예측 생성 시작: "
+                f"✅ A/B 모델 예측 생성 요청 완료: "
                 f"{model_a.name} vs {model_b.name}, "
                 f"total={stats['total']}, scheduled={stats['scheduled']}, skipped={stats['skipped']}, "
                 f"task_id={prediction_task_id}"
             )
         except Exception as e:
-            logger.warning(f"백그라운드 예측 생성 스케줄 실패: {e}")
+            logger.warning(f"스케줄러 서버 예측 생성 요청 실패: {e}")
 
         return {
             "id": new_config.id,
