@@ -175,41 +175,38 @@ async def get_system_status():
 
 
 async def _generate_report_background(stock_code: str, stock_name: str):
-    """백그라운드 리포트 생성 태스크"""
-    db = SessionLocal()
+    """백그라운드 리포트 생성 태스크 (스케줄러 서버로 HTTP 요청)"""
+    import httpx
+
     try:
-        from backend.services.stock_analysis_service import generate_unified_stock_report
+        logger.info(f"🔄 [{stock_code}] {stock_name} 리포트 생성 요청 → 스케줄러 서버")
 
-        logger.info(f"🔄 [{stock_code}] {stock_name} 통합 리포트 백그라운드 생성 시작")
+        # 스케줄러 서버로 HTTP POST 요청
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                "http://localhost:8001/internal/generate-report",
+                json={
+                    "stock_code": stock_code,
+                    "stock_name": stock_name,
+                    "force_update": True
+                }
+            )
+            response.raise_for_status()
+            result = response.json()
 
-        # 통합 리포트 생성 (DB + Prediction 자동 통합)
-        reports = await generate_unified_stock_report(
-            stock_code,
-            db,
-            force_update=True
-        )
+        logger.info(f"✅ [{stock_code}] {stock_name} 리포트 생성 요청 완료: {result.get('message')}")
 
-        if reports:
-            logger.info(f"✅ [{stock_code}] {stock_name} 통합 리포트 생성 완료 ({len(reports)}개 모델)")
-            report_generation_status[stock_code] = {
-                "status": "completed",
-                "started_at": report_generation_status[stock_code]["started_at"],
-                "completed_at": datetime.utcnow(),
-                "stock_name": stock_name,
-                "model_count": len(reports),
-            }
-        else:
-            logger.warning(f"❌ [{stock_code}] {stock_name} 통합 리포트 생성 실패")
-            report_generation_status[stock_code] = {
-                "status": "failed",
-                "started_at": report_generation_status[stock_code]["started_at"],
-                "completed_at": datetime.utcnow(),
-                "stock_name": stock_name,
-                "error": "통합 리포트 생성 실패 (데이터 부족)",
-            }
+        # 상태 업데이트 (처리 중 → 완료는 스케줄러 서버에서 처리되므로 여기선 요청 완료만 표시)
+        report_generation_status[stock_code] = {
+            "status": "scheduled",  # 스케줄러 서버에 요청됨
+            "started_at": report_generation_status[stock_code]["started_at"],
+            "completed_at": datetime.utcnow(),
+            "stock_name": stock_name,
+            "message": "스케줄러 서버에서 처리 중"
+        }
 
     except Exception as e:
-        logger.error(f"❌ [{stock_code}] {stock_name} 리포트 생성 오류: {e}", exc_info=True)
+        logger.error(f"❌ [{stock_code}] {stock_name} 리포트 생성 요청 오류: {e}", exc_info=True)
         report_generation_status[stock_code] = {
             "status": "failed",
             "started_at": report_generation_status[stock_code].get("started_at", datetime.utcnow()),
@@ -217,8 +214,6 @@ async def _generate_report_background(stock_code: str, stock_name: str):
             "stock_name": stock_name,
             "error": str(e),
         }
-    finally:
-        db.close()
 
 
 @router.post("/reports/force-update/{stock_code}")
@@ -617,33 +612,35 @@ async def force_update_stale_reports(
                 "message": "모든 리포트가 최신 상태입니다."
             }
 
-        # 순차적으로 업데이트
+        # 순차적으로 업데이트 (스케줄러 서버로 HTTP 요청)
+        import httpx
         success_count = 0
         fail_count = 0
 
-        for stock in stale_stocks:
-            try:
-                # 통합 리포트 업데이트 (DB + Prediction 자동 통합)
-                logger.info(f"📊 {stock['name']} ({stock['code']}): 통합 리포트 업데이트")
-                reports = await generate_unified_stock_report(
-                    stock['code'],
-                    db,
-                    force_update=True
-                )
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for stock in stale_stocks:
+                try:
+                    # 스케줄러 서버로 리포트 생성 요청
+                    logger.info(f"📊 {stock['name']} ({stock['code']}): 리포트 생성 요청 → 스케줄러 서버")
+                    response = await client.post(
+                        "http://localhost:8001/internal/generate-report",
+                        json={
+                            "stock_code": stock['code'],
+                            "stock_name": stock['name'],
+                            "force_update": True
+                        }
+                    )
+                    response.raise_for_status()
 
-                if reports:
                     success_count += 1
-                    logger.info(f"✅ {stock['name']} ({stock['code']}) 통합 업데이트 성공 ({len(reports)}개 모델)")
-                else:
+                    logger.info(f"✅ {stock['name']} ({stock['code']}) 요청 성공")
+
+                    # API rate limit 고려
+                    await asyncio.sleep(0.5)
+
+                except Exception as e:
                     fail_count += 1
-                    logger.warning(f"❌ {stock['name']} ({stock['code']}) 통합 업데이트 실패 (데이터 부족)")
-
-                # API rate limit 고려
-                await asyncio.sleep(0.5)
-
-            except Exception as e:
-                fail_count += 1
-                logger.error(f"❌ {stock['name']} ({stock['code']}) 오류: {e}")
+                    logger.error(f"❌ {stock['name']} ({stock['code']}) 요청 오류: {e}")
 
         logger.info(f"리포트 강제 업데이트 완료: 성공 {success_count}개, 실패 {fail_count}개")
 

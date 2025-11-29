@@ -124,10 +124,113 @@ async def health_check():
 
 
 # ==================== 내부 관리 API (API 서버 요청용) ====================
-# 향후 추가 예정:
-# - POST /internal/generate-report (리포트 강제 생성)
-# - POST /internal/generate-predictions (예측 생성)
-# - POST /internal/initial-analysis (신규 종목 초기 분석)
+
+from fastapi import BackgroundTasks
+from pydantic import BaseModel
+from typing import List, Optional
+
+
+class GenerateReportRequest(BaseModel):
+    """리포트 생성 요청"""
+    stock_code: str
+    stock_name: str
+    force_update: bool = True
+
+
+class GeneratePredictionsRequest(BaseModel):
+    """예측 생성 요청"""
+    model_ids: List[int]
+    limit: int = 20
+    days: int = 7
+
+
+async def _generate_report_background_task(stock_code: str, stock_name: str, force_update: bool = True):
+    """백그라운드 리포트 생성 태스크"""
+    from backend.db.session import SessionLocal
+    from backend.services.stock_analysis_service import generate_unified_stock_report
+
+    db = SessionLocal()
+    try:
+        logger.info(f"🔄 [{stock_code}] {stock_name} 통합 리포트 백그라운드 생성 시작")
+
+        # 통합 리포트 생성 (DB + Prediction 자동 통합)
+        reports = await generate_unified_stock_report(
+            stock_code,
+            db,
+            force_update=force_update
+        )
+
+        if reports:
+            logger.info(f"✅ [{stock_code}] {stock_name} 통합 리포트 생성 완료 ({len(reports)}개 모델)")
+        else:
+            logger.warning(f"❌ [{stock_code}] {stock_name} 통합 리포트 생성 실패")
+
+    except Exception as e:
+        logger.error(f"❌ [{stock_code}] {stock_name} 리포트 생성 오류: {e}", exc_info=True)
+    finally:
+        db.close()
+
+
+@app.post("/internal/generate-report")
+async def internal_generate_report(
+    request: GenerateReportRequest,
+    background_tasks: BackgroundTasks
+):
+    """
+    리포트 강제 생성 (내부 API - API 서버 전용)
+
+    Args:
+        request: 리포트 생성 요청 (stock_code, stock_name, force_update)
+        background_tasks: FastAPI 백그라운드 태스크
+
+    Returns:
+        작업 시작 확인
+    """
+    logger.info(f"📝 내부 API: 리포트 생성 요청 - {request.stock_name} ({request.stock_code})")
+
+    # 백그라운드 작업 추가
+    background_tasks.add_task(
+        _generate_report_background_task,
+        request.stock_code,
+        request.stock_name,
+        request.force_update
+    )
+
+    return {
+        "success": True,
+        "message": f"{request.stock_name} 리포트 생성 작업 시작",
+        "stock_code": request.stock_code,
+    }
+
+
+@app.post("/internal/generate-predictions")
+async def internal_generate_predictions(request: GeneratePredictionsRequest):
+    """
+    예측 생성 (내부 API - API 서버 전용)
+
+    Args:
+        request: 예측 생성 요청 (model_ids, limit, days)
+
+    Returns:
+        예측 생성 통계 (task_id 포함)
+    """
+    from backend.utils.background_prediction import generate_predictions_for_recent_news
+
+    logger.info(f"🔄 내부 API: 예측 생성 요청 - 모델 {request.model_ids}, limit={request.limit}, days={request.days}")
+
+    stats = generate_predictions_for_recent_news(
+        model_ids=request.model_ids,
+        limit=request.limit,
+        days=request.days,
+        in_background=True
+    )
+
+    logger.info(
+        f"✅ 내부 API: 예측 생성 시작 - "
+        f"total={stats['total']}, scheduled={stats['scheduled']}, task_id={stats.get('task_id')}"
+    )
+
+    return stats
 
 
 def main():
