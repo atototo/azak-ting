@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import toast, { Toaster } from 'react-hot-toast';
 import StockDetailView from "../../components/StockDetailView";
+import { useViewLimit } from "../../contexts/ViewLimitContext";
 
 interface StockPrice {
   close: number;
@@ -164,6 +165,9 @@ export default function StockDetailPage() {
   const stockCode = params.stockCode as string;
   const isPublicPreview = searchParams.get('isPublicPreview') === 'true';
 
+  // 조회 제한 훅
+  const { canViewStock, recordView, openDonationModal, remainingViews } = useViewLimit();
+
   const [stock, setStock] = useState<StockDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -171,6 +175,7 @@ export default function StockDetailPage() {
   const [abConfig, setAbConfig] = useState<{model_a: {name: string}, model_b: {name: string}} | null>(null);
   const [updating, setUpdating] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
+  const [viewRecorded, setViewRecorded] = useState(false);
 
   // 리포트 완료 알림 추적 (이미 알림 표시한 종목 코드)
   // localStorage에서 이전 알림 기록 불러오기 (새로고침 시에도 유지)
@@ -183,6 +188,27 @@ export default function StockDetailPage() {
   useEffect(() => {
     setIsMounted(true);
   }, []);
+
+  // 조회 제한 체크 및 기록
+  useEffect(() => {
+    if (!stockCode || viewRecorded) return;
+
+    // 조회 가능 여부 체크
+    if (!canViewStock(stockCode)) {
+      // 제한 도달 - 모달 표시
+      openDonationModal();
+      setViewRecorded(true);
+      return;
+    }
+
+    // 조회 기록
+    const success = recordView(stockCode);
+    setViewRecorded(true);
+
+    if (!success) {
+      // 이번 조회로 제한 도달 - 모달은 recordView에서 표시됨
+    }
+  }, [stockCode, canViewStock, recordView, openDonationModal, viewRecorded]);
 
   // A/B 설정 가져오기
   useEffect(() => {

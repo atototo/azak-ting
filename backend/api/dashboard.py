@@ -386,6 +386,52 @@ async def check_data_availability(db: Session = Depends(get_db)):
         return {"error": str(e), "traceback": traceback.format_exc()}
 
 
+def get_top_movers_from_db(db: Session, direction: str = "gainers", limit: int = 5):
+    """
+    DB에서 급등/급락 종목 조회 (KIS API fallback용)
+
+    Args:
+        db: DB 세션
+        direction: "gainers" 또는 "losers"
+        limit: 조회 개수
+    """
+    from backend.utils.stock_mapping import get_stock_mapper
+    stock_mapper = get_stock_mapper()
+
+    # 종목별 최신 데이터만 가져오기
+    latest_subq = db.query(
+        StockCurrentPrice.stock_code,
+        func.max(StockCurrentPrice.datetime).label('max_dt')
+    ).group_by(StockCurrentPrice.stock_code).subquery()
+
+    query = db.query(StockCurrentPrice).join(
+        latest_subq,
+        (StockCurrentPrice.stock_code == latest_subq.c.stock_code) &
+        (StockCurrentPrice.datetime == latest_subq.c.max_dt)
+    )
+
+    if direction == "gainers":
+        query = query.filter(StockCurrentPrice.prdy_ctrt > 0).order_by(StockCurrentPrice.prdy_ctrt.desc())
+    else:
+        query = query.filter(StockCurrentPrice.prdy_ctrt < 0).order_by(StockCurrentPrice.prdy_ctrt.asc())
+
+    results = []
+    for item in query.limit(limit).all():
+        stock_name = stock_mapper.get_company_name(item.stock_code) or item.stock_code
+        results.append({
+            'stock_code': item.stock_code,
+            'stock_name': stock_name,
+            'change_rate': float(item.prdy_ctrt) if item.prdy_ctrt else 0,
+            'current_price': int(item.stck_prpr) if item.stck_prpr else 0,
+            'ai_signals': 0,
+            'positive_signals': 0,
+            'negative_signals': 0,
+            'confidence': None
+        })
+
+    return results
+
+
 @router.get("/dashboard/market-momentum")
 async def get_market_momentum(db: Session = Depends(get_db)):
     """
@@ -454,6 +500,14 @@ async def get_market_momentum(db: Session = Depends(get_db)):
 
         top_gainers = gainers[:5]
         top_losers = losers[:5]
+
+        # Fallback: KIS API 데이터 없으면 (주말/휴장) DB에서 조회
+        if not top_gainers:
+            logger.info("KIS API 급등 데이터 없음 - DB fallback 사용")
+            top_gainers = get_top_movers_from_db(db, "gainers", 5)
+        if not top_losers:
+            logger.info("KIS API 급락 데이터 없음 - DB fallback 사용")
+            top_losers = get_top_movers_from_db(db, "losers", 5)
 
         # 2. 투자자 동향 (최근 데이터)
         # 종목별 가장 최근 데이터 조회
