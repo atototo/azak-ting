@@ -38,6 +38,18 @@ from backend.crawlers.kis_financial_collector import run_financial_ratios_collec
 logger = logging.getLogger(__name__)
 
 
+def safe_close_db(db) -> None:
+    """
+    데이터베이스 세션을 안전하게 종료합니다.
+
+    PostgreSQL 서버가 idle 연결을 끊은 경우에도 예외 없이 종료합니다.
+    """
+    try:
+        db.close()
+    except Exception as e:
+        logger.warning(f"DB 세션 종료 중 경고 (무시): {e}")
+
+
 class CrawlerScheduler:
     """크롤러 스케줄러 클래스"""
 
@@ -208,7 +220,7 @@ class CrawlerScheduler:
             logger.error(f"❌ 뉴스 크롤링 중 예상치 못한 에러: {e}")
 
         finally:
-            db.close()
+            safe_close_db(db)
 
     async def _crawl_stock_specific_news(self) -> None:
         """
@@ -281,7 +293,7 @@ class CrawlerScheduler:
             logger.error(f"❌ 종목별 검색 중 오류: {e}", exc_info=True)
 
         finally:
-            db.close()
+            safe_close_db(db)
 
     async def _crawl_dart_disclosures(self) -> None:
         """
@@ -353,7 +365,7 @@ class CrawlerScheduler:
             logger.error(f"❌ DART 공시 수집 중 오류: {e}", exc_info=True)
 
         finally:
-            db.close()
+            safe_close_db(db)
 
     # FDR 주가 수집 제거 - KIS API로 전환 완료
     # _collect_stock_prices() 메서드는 더 이상 사용하지 않음
@@ -398,7 +410,7 @@ class CrawlerScheduler:
             logger.error(f"❌ 뉴스-주가 매칭 중 예상치 못한 에러: {e}")
 
         finally:
-            db.close()
+            safe_close_db(db)
 
     def _embed_news(self) -> None:
         """
@@ -490,7 +502,7 @@ class CrawlerScheduler:
             logger.error(f"❌ AI 시장 분석 중 예상치 못한 에러: {e}")
 
         finally:
-            db.close()
+            safe_close_db(db)
 
     async def _collect_kis_daily_prices(self) -> None:
         """
@@ -729,7 +741,7 @@ class CrawlerScheduler:
             logger.error(f"❌ 리포트 생성 중 예상치 못한 에러: {e}")
 
         finally:
-            db.close()
+            safe_close_db(db)
 
     def _generate_model_evaluations(self) -> None:
         """
@@ -873,7 +885,7 @@ class CrawlerScheduler:
             logger.error(f"❌ 모델 평가 생성 중 예상치 못한 에러: {e}")
 
         finally:
-            db.close()
+            safe_close_db(db)
 
     def start(self) -> None:
         """스케줄러를 시작합니다."""

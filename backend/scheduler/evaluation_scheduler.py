@@ -14,6 +14,14 @@ from backend.services.evaluation_service import EvaluationService
 logger = logging.getLogger(__name__)
 
 
+def safe_close_db(db) -> None:
+    """데이터베이스 세션을 안전하게 종료합니다."""
+    try:
+        db.close()
+    except Exception as e:
+        logger.warning(f"DB 세션 종료 중 경고 (무시): {e}")
+
+
 class EvaluationScheduler:
     """
     평가 스케줄러 (비동기).
@@ -103,7 +111,7 @@ class EvaluationScheduler:
         except Exception as e:
             logger.error(f"❌ 일일 평가 배치 작업 실패: {e}", exc_info=True)
         finally:
-            db.close()
+            safe_close_db(db)
 
     def run_manual(self, target_date: datetime = None):
         """
@@ -149,7 +157,7 @@ class EvaluationScheduler:
         except Exception as e:
             logger.error(f"❌ 수동 평가 실패: {e}", exc_info=True)
         finally:
-            db.close()
+            safe_close_db(db)
 
     def _run_daily_aggregation(self):
         """
@@ -180,7 +188,7 @@ class EvaluationScheduler:
         except Exception as e:
             logger.error(f"❌ 일일 집계 배치 작업 실패: {e}", exc_info=True)
         finally:
-            db.close()
+            safe_close_db(db)
 
     def run_manual_aggregation(self, target_date: datetime = None):
         """
@@ -208,4 +216,4 @@ class EvaluationScheduler:
         except Exception as e:
             logger.error(f"❌ 수동 집계 실패: {e}", exc_info=True)
         finally:
-            db.close()
+            safe_close_db(db)

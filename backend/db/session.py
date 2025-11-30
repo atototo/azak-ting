@@ -14,7 +14,7 @@ engine = create_engine(
     echo=False,  # SQL 로깅 비활성화 (프로덕션)
     pool_size=30,  # 연결 풀 크기 (백그라운드 예측 스레드 대응)
     max_overflow=50,  # 최대 초과 연결 (버스트 로드 대응)
-    pool_recycle=3600,  # 연결 재활용 (1시간)
+    pool_recycle=300,  # 연결 재활용 (5분 - PostgreSQL idle timeout 방지)
     pool_timeout=60,  # 연결 대기 시간 (60초)
 )
 
