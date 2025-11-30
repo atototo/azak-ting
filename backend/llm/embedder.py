@@ -6,12 +6,14 @@ HuggingFace Transformers (BM-K/KoSimCSE-roberta)를 사용하여 뉴스를 벡�
 """
 import logging
 import threading
-from typing import List, Optional, Dict, Tuple
+import pickle
+from typing import List, Optional, Dict, Tuple, Any
 from datetime import datetime
 import time
 import os
 
 import torch
+import faiss
 from transformers import AutoTokenizer, AutoModel
 import numpy as np
 from sqlalchemy.orm import Session
@@ -137,6 +139,35 @@ class NewsEmbedder:
 
         return embeddings
 
+    def _load_faiss_metadata(self) -> List[Dict[str, Any]]:
+        """
+        FAISS 메타데이터 파일을 직접 로드합니다 (동기).
+
+        Returns:
+            메타데이터 리스트
+        """
+        metadata_path = settings.FAISS_METADATA_PATH
+
+        if not os.path.exists(metadata_path):
+            return []
+
+        try:
+            with open(metadata_path, 'rb') as f:
+                return pickle.load(f)
+        except Exception as e:
+            logger.warning(f"FAISS 메타데이터 로드 실패: {e}")
+            return []
+
+    def _get_indexed_news_ids(self) -> set:
+        """
+        FAISS에 이미 인덱싱된 뉴스 ID 목록을 직접 조회합니다 (동기).
+
+        Returns:
+            인덱싱된 뉴스 ID 집합
+        """
+        metadata = self._load_faiss_metadata()
+        return set(meta["news_article_id"] for meta in metadata)
+
     def get_unembedded_news(self, db: Session, limit: int = 100) -> List[NewsArticle]:
         """
         아직 임베딩되지 않은 뉴스를 조회합니다.
@@ -149,12 +180,8 @@ class NewsEmbedder:
             임베딩되지 않은 뉴스 리스트
         """
         try:
-            # FAISS에서 이미 인덱싱된 뉴스 ID 조회
-            from backend.llm.vector_search import get_vector_search
-
-            vector_search = get_vector_search()
-            embedded_news_ids = vector_search.get_indexed_news_ids()
-
+            # FAISS 메타데이터에서 직접 인덱싱된 뉴스 ID 조회 (동기)
+            embedded_news_ids = self._get_indexed_news_ids()
             logger.info(f"FAISS에 이미 저장된 뉴스: {len(embedded_news_ids)}건")
 
         except Exception as e:
@@ -185,7 +212,7 @@ class NewsEmbedder:
         self, news_list: List[NewsArticle], embeddings: List[List[float]]
     ) -> int:
         """
-        뉴스 임베딩을 FAISS에 저장합니다.
+        뉴스 임베딩을 FAISS에 직접 저장합니다 (동기).
 
         Args:
             news_list: 뉴스 리스트
@@ -199,28 +226,45 @@ class NewsEmbedder:
             return 0
 
         try:
-            # FAISS에 저장
-            from backend.llm.vector_search import get_vector_search
+            index_path = settings.FAISS_INDEX_PATH
+            metadata_path = settings.FAISS_METADATA_PATH
 
-            vector_search = get_vector_search()
+            # 디렉토리 생성
+            os.makedirs(os.path.dirname(index_path), exist_ok=True)
+            os.makedirs(os.path.dirname(metadata_path), exist_ok=True)
 
-            # 데이터 준비
-            news_ids = [news.id for news in news_list]
-            stock_codes = [news.stock_code or "" for news in news_list]
-            published_timestamps = [
-                int(news.published_at.timestamp()) for news in news_list
-            ]
+            # 기존 인덱스 로드 또는 새로 생성
+            if os.path.exists(index_path):
+                index = faiss.read_index(index_path)
+            else:
+                index = faiss.IndexFlatL2(settings.EMBEDDING_DIM)
 
-            # FAISS에 추가
-            saved_count = vector_search.add_embeddings(
-                news_ids=news_ids,
-                embeddings=embeddings,
-                stock_codes=stock_codes,
-                published_timestamps=published_timestamps,
-            )
+            # 기존 메타데이터 로드
+            metadata = self._load_faiss_metadata()
 
-            logger.info(f"FAISS에 {saved_count}건 저장 완료")
-            return saved_count
+            # 임베딩을 numpy 배열로 변환
+            embeddings_np = np.array(embeddings, dtype=np.float32)
+
+            # FAISS 인덱스에 추가
+            index.add(embeddings_np)
+
+            # 메타데이터 추가
+            for news in news_list:
+                metadata.append({
+                    "news_article_id": news.id,
+                    "stock_code": news.stock_code or "",
+                    "published_at": int(news.published_at.timestamp()),
+                })
+
+            # 인덱스 저장
+            faiss.write_index(index, index_path)
+
+            # 메타데이터 저장
+            with open(metadata_path, 'wb') as f:
+                pickle.dump(metadata, f)
+
+            logger.info(f"💾 FAISS에 {len(news_list)}건 저장 완료 (총 {index.ntotal}개 벡터)")
+            return len(news_list)
 
         except Exception as e:
             logger.error(f"FAISS 저장 실패: {e}")

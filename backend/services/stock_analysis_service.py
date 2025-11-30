@@ -7,7 +7,27 @@ import logging
 import json
 import re
 import asyncio
-from typing import Optional, Dict, Any, List
+from json_repair import repair_json
+from typing import Optional, Dict, Any, List, Union
+
+
+def _parse_price(value: Union[str, int, float, None]) -> Optional[float]:
+    """
+    가격 값을 float으로 파싱합니다.
+    LLM이 "9,800" 같은 쉼표 포함 문자열을 반환할 수 있으므로 처리합니다.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            # 쉼표, 공백, 원 기호 등 제거
+            cleaned = value.replace(",", "").replace(" ", "").replace("원", "").strip()
+            return float(cleaned) if cleaned else None
+        except ValueError:
+            return None
+    return None
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -212,7 +232,7 @@ async def generate_unified_stock_report(
                     "model": model.model_identifier,
                     "messages": messages,
                     "temperature": 0.4,
-                    "max_tokens": 4000 if model.model_type == "reasoning" else 2000,
+                    "max_tokens": 4000 if model.model_type == "reasoning" else 3000,
                 }
 
                 # 일반 모델만 response_format 사용 (reasoning 모델 제외)
@@ -236,12 +256,18 @@ async def generate_unified_stock_report(
 
                 logger.debug(f"  📝 {model.name} response (first 200 chars): {result_text[:200]}")
 
-                # JSON 파싱
+                # JSON 파싱 (불완전한 JSON 자동 복구)
                 try:
                     report_data = json.loads(result_text)
                 except json.JSONDecodeError as e:
-                    logger.error(f"  ❌ {model.name} JSON parse error. Response: {result_text[:500]}")
-                    raise
+                    logger.warning(f"  ⚠️ {model.name} JSON parse error, attempting repair...")
+                    try:
+                        repaired_json = repair_json(result_text)
+                        report_data = json.loads(repaired_json)
+                        logger.info(f"  ✅ {model.name} JSON repaired successfully")
+                    except Exception as repair_error:
+                        logger.error(f"  ❌ {model.name} JSON repair failed. Original: {result_text[:500]}")
+                        raise e
 
                 # StockAnalysisSummary 객체 생성
                 summary = StockAnalysisSummary(
@@ -263,13 +289,13 @@ async def generate_unified_stock_report(
                     up_count=up_count,
                     down_count=down_count,
                     hold_count=hold_count,
-                    # 가격 목표치 (있으면 포함)
-                    base_price=report_data.get("price_targets", {}).get("base_price"),
-                    short_term_target_price=report_data.get("price_targets", {}).get("short_term_target"),
-                    short_term_support_price=report_data.get("price_targets", {}).get("short_term_support"),
-                    medium_term_target_price=report_data.get("price_targets", {}).get("medium_term_target"),
-                    medium_term_support_price=report_data.get("price_targets", {}).get("medium_term_support"),
-                    long_term_target_price=report_data.get("price_targets", {}).get("long_term_target"),
+                    # 가격 목표치 (있으면 포함) - LLM이 쉼표 포함 문자열 반환할 수 있으므로 파싱
+                    base_price=_parse_price(report_data.get("price_targets", {}).get("base_price")),
+                    short_term_target_price=_parse_price(report_data.get("price_targets", {}).get("short_term_target")),
+                    short_term_support_price=_parse_price(report_data.get("price_targets", {}).get("short_term_support")),
+                    medium_term_target_price=_parse_price(report_data.get("price_targets", {}).get("medium_term_target")),
+                    medium_term_support_price=_parse_price(report_data.get("price_targets", {}).get("medium_term_support")),
+                    long_term_target_price=_parse_price(report_data.get("price_targets", {}).get("long_term_target")),
                 )
 
                 logger.info(f"  ✅ {model.name} report created (confidence={summary.confidence_level}, predictions={total_predictions})")
@@ -804,7 +830,7 @@ def _generate_report_for_model(
             "model": model.model_identifier,
             "messages": messages,
             "temperature": 0.4,
-            "max_tokens": 4000 if model.model_type == "reasoning" else 1000,
+            "max_tokens": 4000 if model.model_type == "reasoning" else 3000,
         }
 
         # 일반 모델만 response_format 사용 (reasoning 모델 제외)
@@ -817,7 +843,13 @@ def _generate_report_for_model(
         if model.provider == "openrouter":
             result_text = _extract_openrouter_json(result_text)
 
-        return json.loads(result_text)
+        # JSON 파싱 (불완전한 JSON 자동 복구)
+        try:
+            return json.loads(result_text)
+        except json.JSONDecodeError:
+            logger.warning(f"  ⚠️ {model.name} JSON parse error, attempting repair...")
+            repaired_json = repair_json(result_text)
+            return json.loads(repaired_json)
     except Exception as e:
         logger.error(
             f"모델 {model.name} ({model.provider}) 리포트 생성 실패: {e}",
@@ -864,12 +896,12 @@ def _build_summary_from_payload(
         down_count=down_count,
         hold_count=hold_count,
         avg_confidence=avg_confidence,
-        base_price=price_targets.get("base_price"),
-        short_term_target_price=price_targets.get("short_term_target"),
-        short_term_support_price=price_targets.get("short_term_support"),
-        medium_term_target_price=price_targets.get("medium_term_target"),
-        medium_term_support_price=price_targets.get("medium_term_support"),
-        long_term_target_price=price_targets.get("long_term_target"),
+        base_price=_parse_price(price_targets.get("base_price")),
+        short_term_target_price=_parse_price(price_targets.get("short_term_target")),
+        short_term_support_price=_parse_price(price_targets.get("short_term_support")),
+        medium_term_target_price=_parse_price(price_targets.get("medium_term_target")),
+        medium_term_support_price=_parse_price(price_targets.get("medium_term_support")),
+        long_term_target_price=_parse_price(price_targets.get("long_term_target")),
         last_updated=now,
         based_on_prediction_count=total_predictions,
     )
