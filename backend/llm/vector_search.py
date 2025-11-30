@@ -9,6 +9,11 @@ FAISS에서 유사한 과거 뉴스를 검색하고, 해당 뉴스의 주가 변
 - ModelLoadLock으로 PyTorch 동시성 제어
 - 초기화 시 FAISS 인덱스 한 번만 로드
 - CPU 집약 작업은 executor로 분리
+
+인덱스 최적화 (Issue #19):
+- IndexIVFFlat + Inner Product 사용 (10,000건 이상 최적)
+- Inner Product = Cosine Similarity (L2 정규화된 벡터)
+- 클러스터 기반 검색으로 O(N) → O(√N) 성능 개선
 """
 import logging
 import os
@@ -40,10 +45,16 @@ class NewsVectorSearch:
     - ModelLoadLock으로 PyTorch Segmentation Fault 방지
     - 초기화 시 FAISS 인덱스 한 번만 로드
     - 모든 메서드 async/await
+    - IndexIVFFlat + Inner Product (Issue #19)
     """
 
     _instance: Optional['NewsVectorSearch'] = None
     _initialized: bool = False
+
+    # IVF 인덱스 설정
+    IVF_NLIST = 100  # 클러스터 수 (sqrt(N) 권장, 10000건 → 100)
+    IVF_NPROBE = 10  # 검색 시 탐색할 클러스터 수
+    MIN_VECTORS_FOR_IVF = 1000  # IVF 학습에 필요한 최소 벡터 수
 
     def __new__(cls):
         """Singleton 패턴 구현"""
@@ -61,6 +72,7 @@ class NewsVectorSearch:
         self.metadata_path = settings.FAISS_METADATA_PATH
         self._index: Optional[faiss.Index] = None
         self._metadata: List[Dict[str, Any]] = []
+        self._is_ivf: bool = False  # IVF 인덱스 여부
 
         NewsVectorSearch._initialized = True
         logger.info("🔍 NewsVectorSearch 초기화 완료 (Singleton)")
@@ -70,11 +82,25 @@ class NewsVectorSearch:
         os.makedirs(os.path.dirname(self.index_path), exist_ok=True)
         os.makedirs(os.path.dirname(self.metadata_path), exist_ok=True)
 
+    def _create_empty_index(self) -> faiss.Index:
+        """빈 IndexFlatIP 인덱스 생성 (Inner Product)"""
+        return faiss.IndexFlatIP(settings.EMBEDDING_DIM)
+
+    def _is_index_ivf(self, index: faiss.Index) -> bool:
+        """인덱스가 IVF 타입인지 확인"""
+        try:
+            # IVF 인덱스는 nprobe 속성을 가짐
+            _ = index.nprobe
+            return True
+        except AttributeError:
+            return False
+
     async def load_index(self):
         """
         FAISS 인덱스 및 메타데이터 로드 (ModelLoadLock 적용)
 
         PyTorch Segmentation Fault 방지를 위해 Lock 사용
+        기존 IndexFlatL2와 새로운 IndexIVFFlat 모두 지원
         """
         async with ModelLoadLock.get_lock():
             if self._index is not None:
@@ -83,24 +109,33 @@ class NewsVectorSearch:
 
             if not os.path.exists(self.index_path) or not os.path.exists(self.metadata_path):
                 logger.warning("FAISS 인덱스 파일 없음, 빈 인덱스 초기화")
-                self._index = faiss.IndexFlatL2(settings.EMBEDDING_DIM)
+                self._index = self._create_empty_index()
                 self._metadata = []
+                self._is_ivf = False
                 return
 
             try:
                 # FAISS 인덱스 로드
                 self._index = faiss.read_index(self.index_path)
+                self._is_ivf = self._is_index_ivf(self._index)
+
+                # IVF 인덱스면 nprobe 설정
+                if self._is_ivf:
+                    self._index.nprobe = self.IVF_NPROBE
+                    logger.info(f"📊 IVF 인덱스 로드됨 (nprobe={self.IVF_NPROBE})")
 
                 # 메타데이터 로드
                 with open(self.metadata_path, 'rb') as f:
                     self._metadata = pickle.load(f)
 
-                logger.info(f"✅ FAISS 인덱스 로드 완료: {self._index.ntotal}개 벡터")
+                index_type = "IVFFlat+IP" if self._is_ivf else "FlatL2(legacy)"
+                logger.info(f"✅ FAISS 인덱스 로드 완료: {self._index.ntotal}개 벡터 ({index_type})")
 
             except Exception as e:
                 logger.error(f"❌ FAISS 인덱스 로드 실패: {e}")
-                self._index = faiss.IndexFlatL2(settings.EMBEDDING_DIM)
+                self._index = self._create_empty_index()
                 self._metadata = []
+                self._is_ivf = False
 
     def save_index(self):
         """
@@ -251,8 +286,13 @@ class NewsVectorSearch:
                 if stock_code and meta["stock_code"] != stock_code:
                     continue
 
-                # 유사도 계산 (L2 distance -> cosine similarity 근사)
-                similarity = 1 / (1 + dist)
+                # 유사도 계산
+                # - Inner Product (IVF): 정규화된 벡터는 IP = cosine similarity
+                # - L2 distance (legacy): 근사 변환
+                if self._is_ivf:
+                    similarity = float(dist)  # IP는 바로 similarity
+                else:
+                    similarity = 1 / (1 + dist)  # L2 → similarity 근사
 
                 if similarity < similarity_threshold:
                     continue
