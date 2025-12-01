@@ -106,8 +106,10 @@ test_*.py
 test_*.json
 
 # Claude Code Local Settings
-.claude/settings.local.json
-.claude/skills/
+.claude/
+.ai/
+.bamd/
+.bmad-ephemeral/
 
 # Documentation Archives and Reports
 docs/.archive/
@@ -115,3 +117,5 @@ docs/project-scan-report*.json
 
 # Workflow Temporary Files
 .workflow-temp/
+
+
