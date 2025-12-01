@@ -109,6 +109,7 @@ test_*.json
 .claude/
 .ai/
 .bamd/
+.bmad/
 .bmad-ephemeral/
 
 # Documentation Archives and Reports
