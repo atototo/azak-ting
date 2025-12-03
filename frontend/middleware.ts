@@ -2,16 +2,45 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 /**
+ * 퍼블릭 접근 허용 경로
+ * 로그인 없이도 접근 가능한 페이지
+ */
+const PUBLIC_PATHS = [
+  "/",           // 대시보드
+  "/stocks",     // 종목 목록
+];
+
+/**
+ * 퍼블릭 접근 허용 경로 프리픽스
+ * 하위 경로 포함 (예: /stocks/005930)
+ */
+const PUBLIC_PATH_PREFIXES = [
+  "/stocks/",    // 종목 상세 페이지
+];
+
+/**
  * Next.js 미들웨어 - 인증 및 권한 체크
  *
  * 모든 요청을 가로채서 인증 상태를 확인하고,
  * 비인증 사용자를 로그인 페이지로 리다이렉트합니다.
+ *
+ * 단, 퍼블릭 경로(대시보드, 종목 목록/상세)는 로그인 없이 접근 가능합니다.
  */
 export async function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
 
   // 로그인 페이지와 API 엔드포인트는 체크하지 않음
   if (pathname === "/login" || pathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
+
+  // 퍼블릭 경로는 인증 없이 통과
+  if (PUBLIC_PATHS.includes(pathname)) {
+    return NextResponse.next();
+  }
+
+  // 퍼블릭 경로 프리픽스 체크 (하위 경로 포함)
+  if (PUBLIC_PATH_PREFIXES.some(prefix => pathname.startsWith(prefix))) {
     return NextResponse.next();
   }
 

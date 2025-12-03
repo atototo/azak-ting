@@ -35,7 +35,8 @@ export default function Navigation() {
     setLogoutLoading(true);
     try {
       await logout();
-      router.push("/login");
+      // 로그아웃 후 대시보드에 머무름 (비회원 상태로 전환)
+      router.push("/");
     } catch (error) {
       console.error("로그아웃 실패:", error);
     } finally {
@@ -73,23 +74,34 @@ export default function Navigation() {
             </div>
           </div>
 
-          {/* User info and logout button */}
+          {/* User info and logout/login button */}
           <div className="hidden sm:ml-6 sm:flex sm:items-center sm:space-x-4">
-            <div className="flex items-center space-x-2 text-sm text-gray-700">
-              <span className="font-medium">{user?.nickname}</span>
-              {isAdmin && (
-                <span className="px-2 py-1 text-xs font-semibold text-blue-800 bg-blue-100 rounded-full">
-                  관리자
-                </span>
-              )}
-            </div>
-            <button
-              onClick={handleLogout}
-              disabled={logoutLoading}
-              className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {logoutLoading ? "로그아웃 중..." : "로그아웃"}
-            </button>
+            {user ? (
+              <>
+                <div className="flex items-center space-x-2 text-sm text-gray-700">
+                  <span className="font-medium">{user.nickname}</span>
+                  {isAdmin && (
+                    <span className="px-2 py-1 text-xs font-semibold text-blue-800 bg-blue-100 rounded-full">
+                      관리자
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={handleLogout}
+                  disabled={logoutLoading}
+                  className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {logoutLoading ? "로그아웃 중..." : "로그아웃"}
+                </button>
+              </>
+            ) : (
+              <Link
+                href="/login"
+                className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+              >
+                로그인
+              </Link>
+            )}
           </div>
 
           {/* Mobile menu button */}
@@ -159,28 +171,42 @@ export default function Navigation() {
               </Link>
             ))}
           </div>
-          {/* Mobile user info and logout */}
+          {/* Mobile user info and logout/login */}
           <div className="pt-4 pb-3 border-t border-gray-200">
-            <div className="flex items-center px-4">
-              <div className="flex-1">
-                <div className="text-base font-medium text-gray-800">{user?.nickname}</div>
-                <div className="text-sm font-medium text-gray-500">{user?.email}</div>
-                {isAdmin && (
-                  <span className="inline-block mt-1 px-2 py-1 text-xs font-semibold text-blue-800 bg-blue-100 rounded-full">
-                    관리자
-                  </span>
-                )}
+            {user ? (
+              <>
+                <div className="flex items-center px-4">
+                  <div className="flex-1">
+                    <div className="text-base font-medium text-gray-800">{user.nickname}</div>
+                    <div className="text-sm font-medium text-gray-500">{user.email}</div>
+                    {isAdmin && (
+                      <span className="inline-block mt-1 px-2 py-1 text-xs font-semibold text-blue-800 bg-blue-100 rounded-full">
+                        관리자
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-3 px-2">
+                  <button
+                    onClick={handleLogout}
+                    disabled={logoutLoading}
+                    className="w-full text-left px-3 py-2 text-base font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-md disabled:opacity-50"
+                  >
+                    {logoutLoading ? "로그아웃 중..." : "로그아웃"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="px-2">
+                <Link
+                  href="/login"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block px-3 py-2 text-base font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-md"
+                >
+                  로그인
+                </Link>
               </div>
-            </div>
-            <div className="mt-3 px-2">
-              <button
-                onClick={handleLogout}
-                disabled={logoutLoading}
-                className="w-full text-left px-3 py-2 text-base font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-md disabled:opacity-50"
-              >
-                {logoutLoading ? "로그아웃 중..." : "로그아웃"}
-              </button>
-            </div>
+            )}
           </div>
         </div>
       )}
